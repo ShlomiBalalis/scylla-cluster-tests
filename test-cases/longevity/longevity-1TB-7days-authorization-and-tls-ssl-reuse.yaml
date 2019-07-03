@@ -37,6 +37,7 @@ authenticator: 'PasswordAuthenticator'
 authenticator_user: cassandra
 authenticator_password: cassandra
 authorizer: 'CassandraAuthorizer'
+ami_id_db_scylla: 'ami-08f0f9bd6c5f677fb'
 
 use_mgmt: true
 
