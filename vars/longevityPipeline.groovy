@@ -72,6 +72,9 @@ def call(Map pipelineParams) {
                             export SCT_AMI_ID_DB_SCYLLA_DESC=\$(echo \$GIT_BRANCH | sed -E 's+(origin/|origin/branch-)++')
                             export SCT_AMI_ID_DB_SCYLLA_DESC=\$(echo \$SCT_AMI_ID_DB_SCYLLA_DESC | tr ._ - | cut -c1-8 )
 
+
+                            export SCT_AMI_ID_DB_SCYLLA_DESC="3-1"
+
                             echo "start avocado ......."
                             ./docker/env/hydra.sh run ${pipelineParams.test_name} --xunit /sct/results.xml --job-results-dir /sct --show-job-log
                             echo "end avocado ....."
