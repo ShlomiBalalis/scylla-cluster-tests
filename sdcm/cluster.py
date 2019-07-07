@@ -3163,6 +3163,8 @@ class BaseMonitorSet(object):
         node.wait_ssh_up()
 
         if Setup.REUSE_CLUSTER:
+            EVENTS_PROCESSES['EVENTS_GRAFANA_ANNOTATOR'].set_grafana_url(
+                "http://{0.public_ip_address}:{1.grafana_port}".format(node, self))
             return
         self.install_scylla_monitoring(node)
         self.configure_scylla_monitoring(node)
