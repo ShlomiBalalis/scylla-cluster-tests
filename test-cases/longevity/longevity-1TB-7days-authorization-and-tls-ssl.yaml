@@ -22,10 +22,10 @@ n_monitor_nodes: 1
 instance_type_db: 'i3.4xlarge'
 instance_type_loader: 'c5.2xlarge'
 
-nemesis_class_name: 'ChaosMonkey'
+nemesis_class_name: 'ValidateHintedHandoffShortDowntime'
 nemesis_interval: 30
 
-user_prefix: 'longevity-tls-1tb-7d'
+user_prefix: 'longevity-tls-1tb-7d-hh-only'
 failure_post_behavior: keep
 space_node_threshold: 644245094
 server_encrypt: 'true'
