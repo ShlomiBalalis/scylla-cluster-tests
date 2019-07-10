@@ -1,7 +1,7 @@
 #!groovy
 
 def call(String backend, String aws_region=null) {
-    def jenkins_labels = ['aws-eu-west-1': 'aws-eu-west1-qa-builder1',
+    def jenkins_labels = ['aws-eu-west-1': 'aws-eu-west1-qa-builder2',
                           'aws-us-east-1' : 'aws-sct-builders-us-east-1',
                           'gce': 'gce-sct-builders']
 
