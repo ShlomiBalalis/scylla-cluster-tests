@@ -23,7 +23,7 @@ nemesis_during_prepare: 'false'
 instance_type_db: 'i3.4xlarge'
 instance_type_loader: 'c5.2xlarge'
 
-nemesis_class_name: 'NodeRestartWithResharding'
+nemesis_class_name: 'ChaosMonkey'
 nemesis_interval: 30
 
 update_db_packages: '/tmp/shlomi/'
