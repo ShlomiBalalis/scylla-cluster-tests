@@ -769,7 +769,7 @@ class Nemesis(object):
             mgr_cluster = manager_tool.add_cluster(name=cluster_name, host=targets[0])
 
         mgr_task = mgr_cluster.create_repair_task()
-        task_final_status = mgr_task.wait_and_get_final_status()
+        task_final_status = mgr_task.wait_and_get_final_status(timeout=28800)
         assert task_final_status == TaskStatus.DONE, 'Task: {} final status is: {}.'.format(mgr_task.id, str(mgr_task.status))
         self.log.info('Task: {} is done.'.format(mgr_task.id))
 
