@@ -1740,6 +1740,14 @@ server_encryption_options:
 
         self.start_scylla_manager_log_capture()
 
+    def install_manager_agent(self, scylla_mgmt_repo):
+        self.download_scylla_manager_repo(scylla_mgmt_repo)
+        if self.is_rhel_like():
+            self.remoter.run('sudo yum install -y scylla-manager-agent')
+        else:
+            self.remoter.run(cmd="sudo apt-get update", ignore_status=True)
+            self.remoter.run('sudo apt-get install -y scylla-manager-agent --force-yes')
+
     def retrieve_scylla_manager_log(self):
         mgmt_log_name = os.path.join(self.logdir, 'scylla_manager.log')
         cmd = "sudo journalctl -u scylla-manager -f".format(mgmt_log_name)
@@ -2756,6 +2764,8 @@ class BaseScyllaCluster(object):
             node.clean_scylla()
             node.install_scylla(scylla_repo=self.params.get('scylla_repo'))
             node.install_scylla_debuginfo()
+            if self.params.get('use_mgmt', False):
+                node.install_manager_agent(self.params.get('scylla_mgmt_repo'))
 
             if Setup.MULTI_REGION:
                 if not endpoint_snitch:

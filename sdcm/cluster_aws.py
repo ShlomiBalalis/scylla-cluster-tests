@@ -659,6 +659,9 @@ class ScyllaAWSCluster(cluster.BaseScyllaCluster, AWSCluster):
             wait.wait_for(scylla_ami_setup_done, step=10, timeout=300)
             node.install_scylla_debuginfo()
 
+            if self.params.get('use_mgmt', False):
+                node.install_manager_agent(self.params.get('scylla_mgmt_repo'))
+
             if cluster.Setup.MULTI_REGION:
                 if not endpoint_snitch:
                     endpoint_snitch = "Ec2MultiRegionSnitch"

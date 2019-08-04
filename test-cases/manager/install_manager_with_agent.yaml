@@ -18,7 +18,7 @@ instance_provision: 'on_demand'
 #scylla_repo_m: 'http://repositories.scylladb.com/scylla/repo/qa-test/centos/scylladb-2019.1.repo'
 ami_id_db_scylla: 'ami-0211d0f492d20e624'
 use_mgmt: True
-scylla_mgmt_repo: 'http://downloads.scylladb.com/manager/rpm/unstable/centos/master/430/scylla-manager.repo'
+scylla_mgmt_repo: 'http://downloads.scylladb.com/manager/rpm/unstable/centos/master/438/scylla-manager.repo'
 
 nemesis_class_name: 'NoOpMonkey'
 nemesis_interval: 5
