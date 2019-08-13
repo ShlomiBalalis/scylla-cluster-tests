@@ -3336,7 +3336,7 @@ class BaseMonitorSet(object):
         self.local_metrics_addr = start_metrics_server()  # start prometheus metrics server locally and return local ip
         self.sct_ip_port = self.set_local_sct_ip()
         self.grafana_port = 3000
-        self.monitor_branch = self.params.get('monitor_branch', default='branch-2.4')
+        self.monitor_branch = self.params.get('monitor_branch')
         self._monitor_install_path_base = None
         self.phantomjs_installed = False
 
@@ -3447,10 +3447,13 @@ class BaseMonitorSet(object):
     def install_scylla_monitoring_prereqs(self, node):
         if node.is_rhel_like():
             prereqs_script = dedent("""
+                yum install -y wget
+                yum install -y unzip
                 yum install -y epel-release
-                yum install -y python-pip unzip wget
-                pip install --upgrade pip
-                pip install pyyaml
+                yum install -y python36
+                yum install -y python36-pip
+                python3 -m pip install --upgrade pip
+                python3 -m pip install pyyaml
                 curl -fsSL get.docker.com -o get-docker.sh
                 sh get-docker.sh
                 systemctl start docker
@@ -3461,10 +3464,10 @@ class BaseMonitorSet(object):
                 sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
                 sudo apt-get update
                 sudo apt-get install -y docker docker.io
+                apt-get install python36
                 apt-get install -y python-setuptools unzip wget
-                easy_install pip
-                pip install --upgrade pip
-                pip install pyyaml
+                python3 -m pip install --upgrade pip
+                python3 -m pip install pyyaml
                 systemctl start docker
             """)
         elif node.is_debian8():
@@ -3478,12 +3481,12 @@ class BaseMonitorSet(object):
             node.remoter.run(cmd="sudo apt-get install -y curl")
             node.remoter.run(cmd="sudo apt-get install software-properties-common -y")
             node.remoter.run(cmd="sudo apt-get update", ignore_status=True)
+            node.remoter.run(cmd="apt-get install python36")
             node.remoter.run(cmd="sudo apt-get install -y python-setuptools wget")
             node.remoter.run(cmd="sudo apt-get install -y unzip")
             prereqs_script = dedent("""
-                easy_install pip
-                pip install --upgrade pip
-                pip install pyyaml
+                python3 -m pip install --upgrade pip
+                python3 -m pip install pyyaml
                 systemctl start docker
             """)
         else:
@@ -3542,7 +3545,7 @@ class BaseMonitorSet(object):
         configure_script = dedent("""
             cd {0.monitor_install_path}
             mkdir -p {0.monitoring_conf_dir}
-            ./genconfig.py -s -n -d {0.monitoring_conf_dir} {0._monitoring_targets}
+            python3 genconfig.py -s -n -d {0.monitoring_conf_dir} {0._monitoring_targets}
         """.format(self))
         node.remoter.run("bash -ce '%s'" % configure_script, verbose=True)
         if alert_manager:
@@ -3593,11 +3596,13 @@ class BaseMonitorSet(object):
             configure_script = dedent("""
                         cd {0.monitor_install_path}
                         mkdir -p {0.monitoring_conf_dir}
-                        ./genconfig.py -s -n -d {0.monitoring_conf_dir} {0._monitoring_targets}
+                        python3 genconfig.py -s -n -d {0.monitoring_conf_dir} {0._monitoring_targets}
                     """.format(self))
             node.remoter.run("sudo bash -ce '%s'" % configure_script, verbose=True)
 
     def start_scylla_monitoring(self, node):
+        node.remoter.run("cp {0.monitor_install_path}/prometheus/scylla_manager_servers.example.yml"
+                         " {0.monitor_install_path}/prometheus/scylla_manager_servers.yml".format(self))
         run_script = dedent("""
             cd {0.monitor_install_path}
             mkdir -p {0.monitoring_data_dir}
