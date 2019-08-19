@@ -27,3 +27,4 @@ primary_key_column: "pk"
 # scylla-manager configuration
 # if running on aws and use_mgmt is true, the monitor image should not contain scylla
 use_mgmt: true
+store_results_in_elasticsearch: false
