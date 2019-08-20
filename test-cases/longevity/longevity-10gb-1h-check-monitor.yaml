@@ -1,0 +1,21 @@
+test_duration: 20
+stress_cmd: ["cassandra-stress write cl=QUORUM duration=180m -schema 'replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -port jmx=6868 -mode cql3 native -rate threads=1000 -pop seq=1..10000000 -log interval=5"
+             ]
+
+monitor_branch: 'branch-2.4'
+
+n_db_nodes: 3
+n_loaders: 1
+n_monitor_nodes: 1
+
+instance_type_db: 'i3.xlarge'
+
+nemesis_class_name: 'MgmtRepair'
+nemesis_interval: 2
+
+use_mgmt: true
+user_prefix: 'check-monitoring-3-longevity-10gb-1h'
+space_node_threshold: 64424
+
+scylla_version: "3.1"
+#reuse_cluster: "7fcba424-0578-487a-b995-6259fe8f94d6"
