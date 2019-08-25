@@ -422,10 +422,11 @@ class Nemesis(object):
             self.target_node.run_cqlsh(cmd)
 
     def disrupt_nodetool_enospc(self, sleep_time=30, all_nodes=False):
-        if all_nodes:
-            nodes = self.cluster.nodes
-        else:
-            nodes = [self.target_node]
+        # if all_nodes:
+        #     nodes = self.cluster.nodes
+        # else:
+        #     nodes = [self.target_node]
+        nodes = [self.cluster.nodes[1]]
         self._set_current_disruption('Enospc test on {}'.format([n.name for n in nodes]))
 
         def search_database_enospc(node):
