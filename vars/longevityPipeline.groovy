@@ -28,10 +28,10 @@ def call(Map pipelineParams) {
             string(defaultValue: "${pipelineParams.get('post_behaviour', 'destroy')}",
                    description: 'keep|destroy',
                    name: 'post_behaviour')
-
             string(defaultValue: "${pipelineParams.get('tag_ami_with_result', 'false')}",
                    description: 'true|false',
                    name: 'tag_ami_with_result')
+            string(defaultValue: '', description: 'If empty - the default manager version will be taken', name: 'scylla_mgmt_repo')
         }
         options {
             timestamps()
@@ -87,8 +87,11 @@ def call(Map pipelineParams) {
                                 export SCT_INSTANCE_PROVISION="${pipelineParams.params.get('provision_type', '')}"
                                 export SCT_AMI_ID_DB_SCYLLA_DESC=\$(echo \$GIT_BRANCH | sed -E 's+(origin/|origin/branch-)++')
                                 export SCT_AMI_ID_DB_SCYLLA_DESC=\$(echo \$SCT_AMI_ID_DB_SCYLLA_DESC | tr ._ - | cut -c1-8 )
-
                                 export SCT_TAG_AMI_WITH_RESULT="${params.tag_ami_with_result}"
+                                if [[ ! -z "${params.scylla_mgmt_repo}" ]] ; then
+                                    export SCT_SCYLLA_MGMT_REPO="${params.scylla_mgmt_repo}"
+
+                                fi
 
                                 echo "start test ......."
                                 ./docker/env/hydra.sh run-test ${pipelineParams.test_name} --backend ${params.backend}  --logdir /sct
