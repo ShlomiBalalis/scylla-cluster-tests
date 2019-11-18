@@ -75,6 +75,7 @@ TASK_QUEUE = 'task_queue'
 RES_QUEUE = 'res_queue'
 WORKSPACE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 SCYLLA_YAML_PATH = "/etc/scylla/scylla.yaml"
+SCYLLA_MANAGER_YAML_PATH = "/etc/scylla-manager/scylla-manager.yaml"
 SCYLLA_DIR = "/var/lib/scylla"
 
 
@@ -1821,6 +1822,8 @@ server_encryption_options:
         """.format(mgmt_user=mgmt_user, rsa_id_dst=rsa_id_dst, rsa_id_dst_pub=rsa_id_dst_pub))  # generate ssh public key from private key.
         self.remoter.run('sudo bash -cxe "%s"' % ssh_config_script)
 
+        self.config_scylla_manager_yaml(segments_per_repair=100)
+
         if self.is_docker():
             self.remoter.run('sudo supervisorctl restart scylla-manager')
             res = self.remoter.run('sudo supervisorctl status scylla-manager')
@@ -1842,18 +1845,6 @@ server_encryption_options:
 
         self.start_scylla_manager_log_capture()
 
-    # def install_manager_agent(self, scylla_mgmt_repo):
-    #     self.download_scylla_manager_repo(scylla_mgmt_repo)
-    #     if self.is_rhel_like():
-    #         self.remoter.run('sudo yum install -y scylla-manager-agent')
-    #     else:
-    #         self.remoter.run(cmd="sudo apt-get update", ignore_status=True)
-    #         self.remoter.run('sudo apt-get install -y scylla-manager-agent --force-yes')
-    #     self.remoter.run(cmd='sudo scyllamgr_ssl_cert_gen')
-    #     self.remoter.run(cmd='sudo sed -i "s/auth_token:.*$/auth_token: {}/" '
-    #                          '/etc/scylla-manager-agent/scylla-manager-agent.yaml'.format(
-    #                              'vYW0pMR7muacXV7qUDBl4XYH6lCjK7TvaVmHtWbNCX0vleDhya4wYliwnHDZUQjWRbhR0VE2lFizBLs04MUjveZR2Sxogb8jB53xzPhuQSuDsbqTlwwy5ucFAXMVEINi'))
-
     def retrieve_scylla_manager_log(self):
         mgmt_log_name = os.path.join(self.logdir, 'scylla_manager.log')
         cmd = "sudo journalctl -u scylla-manager -f"
@@ -1872,6 +1863,10 @@ server_encryption_options:
         self.remoter.run(cmd, ignore_status=True, verbose=True)
         self._scylla_manager_journal_thread.join(timeout)
         self._scylla_manager_journal_thread = None
+
+    def config_scylla_manager_yaml(self, segments_per_repair):
+        yaml_attr = "repair:\n  segments_per_repair: %d\n" % segments_per_repair
+        self.remoter.run("""sudo sh -c 'echo "{}" >> {}'""".format(yaml_attr, SCYLLA_MANAGER_YAML_PATH))
 
     def collect_mgmt_log(self):
         self.log.debug("Collect scylla manager log ...")
