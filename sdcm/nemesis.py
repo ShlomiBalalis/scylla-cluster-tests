@@ -1538,7 +1538,11 @@ class DecommissionMonkey(Nemesis):
 
     @log_time_elapsed_and_status
     def disrupt(self):
-        self.disrupt_nodetool_decommission()
+        try:
+            self.disrupt_nodetool_decommission()
+        except Exception as err:
+            self.tester.kill_stress_thread()
+            raise
 
 
 class NoCorruptRepairMonkey(Nemesis):
