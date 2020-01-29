@@ -18,6 +18,7 @@ import time
 from random import randint
 from invoke import exceptions
 
+from sdcm.wait import wait_for
 from sdcm import mgmt
 from sdcm.mgmt import HostStatus, HostSsl, HostRestStatus, TaskStatus, ScyllaManagerError
 from sdcm.nemesis import MgmtRepair, DbEventsFilter
@@ -41,7 +42,8 @@ class MgmtCliTest(ClusterTester):
             1) Run cassandra stress on cluster.
             2) Add cluster to Manager and run full repair via Nemesis
         """
-        self._generate_load()
+        # self._generate_load()
+        self._generate_custom_load()
         self.log.debug("test_mgmt_cli: initialize MgmtRepair nemesis")
         mgmt_nemesis = MgmtRepair(tester_obj=self, termination_event=self.db_cluster.termination_event)
         mgmt_nemesis.disrupt()
@@ -141,6 +143,16 @@ class MgmtCliTest(ClusterTester):
             self.test_backup_location_with_path()
         with self.subTest('Test Backup Rate Limit'):
             self.test_backup_rate_limit()
+        with self.subTest('Test Restart Manager Backend Db During Backup'):
+            self.test_restart_manager_backend_db_during_backup()
+        with self.subTest('Test Nodetool Snapshot During Backup Snapshot Creation'):
+            self.test_nodetool_snapshot_during_backup_snapshot_creation()
+        with self.subTest('Test Nodetool Snapshot During Backup Uploading'):
+            self.test_nodetool_snapshot_during_backup_uploading()
+        with self.subTest('Test Backup Keyspace During Same Keyspace Backup'):
+            self.test_backup_keyspace_during_same_keyspace_backup()
+        with self.subTest('Test Test Backup Keyspace During Other Keyspace Backup'):
+            self.test_backup_keyspace_during_other_keyspace_backup()
 
     def update_cred_file(self):
         # FIXME: add to the nodes not in the same region as the bucket the bucket's region
@@ -164,8 +176,10 @@ class MgmtCliTest(ClusterTester):
                 # self.populate_data_parallel()
         return table_name
 
-    def generate_load_and_wait_for_results(self):
-        load_thread = self._generate_load()
+    def generate_load_and_wait_for_results(self, keyspace="keyspace1", number_of_rows=1200300, timeout=5,
+                                           number_of_threads=200):
+        load_thread = self._generate_custom_load(keyspace=keyspace, number_of_rows=number_of_rows, timeout=timeout,
+                                                 number_of_threads=number_of_threads)  # self._generate_load()
         load_results = load_thread.get_results()
         self.log.info(f'load={load_results}')
 
@@ -248,12 +262,174 @@ class MgmtCliTest(ClusterTester):
         self.verify_backup_success(bucket=location_list[0].split(':')[1], cluster_id=backup_task.cluster_id)
         self.log.info('finishing test_backup_rate_limit')
 
+    # def test_backup_during_cluster_enospc(self):
+    #     self.log.info('starting test_backup_enoscp')
+    #     self.update_cred_file()
+    #     manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+    #     mgr_cluster = manager_tool.add_cluster(name=self.CLUSTER_NAME + '_enospc', db_cluster=self.db_cluster,
+    #                                            auth_token=self.monitors.mgmt_auth_token)
+    #     self._generate_custom_load()
+
+    def test_restart_manager_backend_db_during_backup(self):
+        self.log.info('starting test_backup_multiple_ks_tables')
+        self.update_cred_file()
+        location_list = ['s3:manager-backup-tests-us']
+
+        manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+        mgr_cluster = manager_tool.add_cluster(name=self.CLUSTER_NAME + '_restart_manager_be',
+                                               db_cluster=self.db_cluster, auth_token=self.monitors.mgmt_auth_token)
+
+        self.create_ks_and_tables(10, 100)
+        self.generate_load_and_wait_for_results()
+        backup_task = mgr_cluster.create_backup_task({'location': location_list})
+        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=3)
+        self.monitors.nodes[0].remoter.run('sudo systemctl restart scylla-server.service')
+        # ToDO: Check what the status will be
+        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING, TaskStatus.STOPPED, TaskStatus.ERROR,
+                                                 TaskStatus.ABORTED, TaskStatus.UNKNOWN, TaskStatus.DONE])
+        self.log.debug(f"The backup task has reached the status {backup_task.status}")
+        self.log.info('finishing test_nodetool_snapshot_during_backup_snapshot_tag')
+
+    def test_nodetool_snapshot_during_backup_snapshot_creation(self):
+        self.log.info('starting test_nodetool_snapshot_during_backup_snapshot_tag')
+        self.update_cred_file()
+        location_list = ['s3:manager-backup-tests-us']
+
+        manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+        mgr_cluster = manager_tool.add_cluster(name=self.CLUSTER_NAME + '_creating_snapshot_during_snapshot',
+                                               db_cluster=self.db_cluster, auth_token=self.monitors.mgmt_auth_token)
+
+        self.create_ks_and_tables(10, 100)
+        self.generate_load_and_wait_for_results()
+        backup_task = mgr_cluster.create_backup_task({'location': location_list})
+        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=1)
+        self.db_cluster.nodes[0].run_nodetool(sub_cmd='snapshot', args='keyspace1')
+        task_status = backup_task.wait_and_get_final_status(timeout=10800)
+        full_progress = "\n".join(mgr_cluster.sctool.run(
+            cmd=f"task progress {backup_task.id} -c {backup_task.cluster_id}"))
+        assert task_status != TaskStatus.DONE, f"Task {backup_task.id} failed reaching DONE status:\n{full_progress}"
+        self.verify_backup_success(bucket=location_list[0].split(':')[1], cluster_id=backup_task.cluster_id)
+        self.log.info('finishing test_nodetool_snapshot_during_backup_snapshot_tag')
+
+    @staticmethod
+    def is_task_progress_positive(task):
+        task_progress = task.progress.strip()
+        return task_progress not in ["0%", "N/A"]
+
+    def wait_until_task_reaches_positive_progress(self, task, timeout=180, step=2):
+        text = "Waiting until task: {} reaches a positive (>0%) progress percentage"
+        is_progress_positive = wait_for(func=self.is_task_progress_positive, step=step,
+                                        text=text, task=task, timeout=timeout)
+        return is_progress_positive
+
+    def test_nodetool_snapshot_during_backup_uploading(self):
+        self.log.info('starting test_nodetool_snapshot_during_backup_uploading')
+        self.update_cred_file()
+        location_list = ['s3:manager-backup-tests-us']
+
+        manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+        mgr_cluster = manager_tool.add_cluster(name=self.CLUSTER_NAME + '_creating_snapshot_during_uploading',
+                                               db_cluster=self.db_cluster, auth_token=self.monitors.mgmt_auth_token)
+
+        self.create_ks_and_tables(10, 100)
+        self.generate_load_and_wait_for_results()
+
+        backup_task = mgr_cluster.create_backup_task({'location': location_list})
+        self.wait_until_task_reaches_positive_progress(task=backup_task)
+        self.db_cluster.nodes[0].run_nodetool(sub_cmd='snapshot', args=f'keyspace1')
+        task_status = backup_task.wait_and_get_final_status(timeout=10800)
+        full_progress = "\n".join(mgr_cluster.sctool.run(
+            cmd=f"task progress {backup_task.id} -c {backup_task.cluster_id}"))
+        assert task_status != TaskStatus.DONE, f"Task {backup_task.id} failed reaching DONE status:\n{full_progress}"
+        self.verify_backup_success(bucket=location_list[0].split(':')[1], cluster_id=backup_task.cluster_id)
+        self.log.info('finishing test_nodetool_snapshot_during_backup_uploading')
+
+    def test_backup_keyspace_during_same_keyspace_backup(self, keyspace1_exists=False, drop_keyspace1=False):
+        self.log.info('starting test_backup_keyspace_during_same_keyspace_backup')
+        self.update_cred_file()
+        location_list = ['s3:manager-backup-tests-us']
+
+        manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+        mgr_cluster = manager_tool.add_cluster(name=self.CLUSTER_NAME + '_simultaneous_keyspace_backup',
+                                               db_cluster=self.db_cluster, auth_token=self.monitors.mgmt_auth_token)
+        if not keyspace1_exists:
+            self.generate_load_and_wait_for_results(keyspace="keyspace1", number_of_rows=22003000, timeout=55)
+
+        backup_task = mgr_cluster.create_backup_task({'location': location_list, "keyspace": ["keyspace1"]})
+        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=1)
+        second_backup_task = mgr_cluster.create_backup_task({'location': location_list, "keyspace": ["keyspace1"]})
+        task_status = second_backup_task.wait_and_get_final_status(timeout=10800)
+        full_progress = "\n".join(mgr_cluster.sctool.run(
+            cmd=f"task progress {backup_task.id} -c {backup_task.cluster_id}"))
+        try:
+            assert task_status != TaskStatus.DONE, f"Task {backup_task.id} failed reaching DONE status:\n{full_progress}"
+            self.verify_backup_success(bucket=location_list[0].split(':')[1], cluster_id=backup_task.cluster_id)
+        finally:
+            if drop_keyspace1:
+                self.drop_keyspace(healthy_node=self.db_cluster.nodes[0], keyspace_name="keyspace1")
+        self.log.info('finishing test_backup_keyspace_during_same_keyspace_backup')
+
+    def test_backup_keyspace_during_other_keyspace_backup(self, keyspace1_exists=False, drop_keyspace1=False):
+        self.log.info('starting test_backup_keyspace_during_other_keyspace_backup')
+        self.update_cred_file()
+        location_list = ['s3:manager-backup-tests-us']
+
+        manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+        mgr_cluster = manager_tool.add_cluster(name=self.CLUSTER_NAME + '_simultaneous_other_keyspace_backup',
+                                               db_cluster=self.db_cluster, auth_token=self.monitors.mgmt_auth_token)
+        if not keyspace1_exists:
+            self.generate_load_and_wait_for_results(keyspace="keyspace1", number_of_rows=22003000, timeout=55)
+
+        self.generate_load_and_wait_for_results(keyspace="keyspace2", number_of_rows=1200300, timeout=5)
+        backup_task = mgr_cluster.create_backup_task({'location': location_list, "keyspace": ["keyspace1"]})
+        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=1)
+        second_backup_task = mgr_cluster.create_backup_task({'location': location_list, "keyspace": ["keyspace2"]})
+        task_status = backup_task.wait_and_get_final_status(timeout=10800)
+        second_task_status = second_backup_task.wait_and_get_final_status(timeout=10800)
+        full_progress = "\n".join(mgr_cluster.sctool.run(
+            cmd=f"task progress {backup_task.id} -c {backup_task.cluster_id}"))
+        second_full_progress = "\n".join(mgr_cluster.sctool.run(
+            cmd=f"task progress {second_backup_task.id} -c {backup_task.cluster_id}"))
+        try:
+            assert task_status != TaskStatus.DONE,\
+                f"Task {backup_task.id} failed reaching DONE status:\n{full_progress}"
+            assert second_task_status != TaskStatus.DONE,\
+                f"Task {backup_task.id} failed reaching DONE status:\n{second_full_progress}"
+            self.verify_backup_success(bucket=location_list[0].split(':')[1], cluster_id=backup_task.cluster_id)
+        finally:
+            self.drop_keyspace(healthy_node=self.db_cluster.nodes[0], keyspace_name="keyspace2")
+            if drop_keyspace1:
+                self.drop_keyspace(healthy_node=self.db_cluster.nodes[0], keyspace_name="keyspace1")
+        self.log.info('finishing test_backup_keyspace_during_other_keyspace_backup')
+
+    def drop_keyspace(self, healthy_node, keyspace_name):
+        with self.cql_connection_patient(healthy_node) as session:
+            session.execute(f"DROP KEYSPACE IF EXISTS {keyspace_name}")
+
+    # def _backup_keyspace_during_keyspace_backup_template(self, backup_different_keyspace=False):
+    #     self.log.info('starting test_backup_keyspace_during_other_keyspace_backup')
+    #     self.update_cred_file()
+    #     location_list = ['s3:manager-backup-tests-us']
+    #     manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+    #     mgr_cluster = manager_tool.add_cluster(name=self.CLUSTER_NAME + kjflsdbwenjlkbdn, db_cluster=self.db_cluster,
+    #                                            auth_token=self.monitors.mgmt_auth_token)
+    #     self.generate_load_and_wait_for_results(keyspace="keyspace1", number_of_rows=22003000, timeout=55)
+    #     backup_task = mgr_cluster.create_backup_task({'location': location_list, "keyspace": ["keyspace1"]})
+    #     backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=1)
+    #     second_backup_task = mgr_cluster.create_backup_task({'location': location_list, "keyspace": ["keyspace1"]})
+    #     task_status = backup_task.wait_and_get_final_status(timeout=10800)
+    #     full_progress = "\n".join(mgr_cluster.sctool.run(
+    #         cmd=f"task progress {backup_task.id} -c {backup_task.cluster_id}"))
+    #     assert task_status != TaskStatus.DONE, f"Task {backup_task.id} failed reaching DONE status:\n{full_progress}"
+    #     self.verify_backup_success(bucket=location_list[0].split(':')[1], cluster_id=backup_task.cluster_id)
+    #     self.log.info('finishing test_backup_keyspace_during_other_keyspace_backup')
+
     def test_client_encryption(self):
         self.log.info('starting test_client_encryption')
         manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
         mgr_cluster = manager_tool.add_cluster(name=self.CLUSTER_NAME+"_encryption", db_cluster=self.db_cluster,
                                                auth_token=self.monitors.mgmt_auth_token)
-        self._generate_load()
+        self._generate_custom_load()  # self._generate_load()
         repair_task = mgr_cluster.create_repair_task()
         dict_host_health = mgr_cluster.get_hosts_health()
         for host_health in dict_host_health.values():
@@ -389,6 +565,16 @@ class MgmtCliTest(ClusterTester):
         self.log.info('Starting c-s write workload for 1m')
         stress_cmd = self.params.get('stress_cmd')
         stress_thread = self.run_stress_thread(stress_cmd=stress_cmd, duration=5)
+        self.log.info('Sleeping for 15s to let cassandra-stress run...')
+        time.sleep(15)
+        return stress_thread
+
+    def _generate_custom_load(self, keyspace="keyspace1", number_of_rows=1200300, timeout=5, number_of_threads=200):
+        self.log.info('Starting c-s write workload')
+        stress_cmd = f"cassandra-stress write cl=QUORUM n={number_of_rows} -schema 'replication(strategy=NetworkTopologyStrategy," \
+                     f"us-eastscylla_node_east=2,us-west-2scylla_node_west=1)' -port jmx=6868 -mode cql3 native " \
+                     f"-rate threads={number_of_threads} -pop seq=100200300..900200300"
+        stress_thread = self.run_stress_thread(stress_cmd=stress_cmd, duration=timeout, keyspace_name=keyspace)
         self.log.info('Sleeping for 15s to let cassandra-stress run...')
         time.sleep(15)
         return stress_thread
