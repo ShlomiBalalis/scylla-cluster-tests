@@ -284,6 +284,7 @@ class MgmtCliTest(ClusterTester):
         backup_task = mgr_cluster.create_backup_task({'location': location_list})
         backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=3)
         self.monitors.nodes[0].remoter.run('sudo systemctl restart scylla-server.service')
+        self.monitors.nodes[0].wait_db_up()
         # ToDO: Check what the status will be
         backup_task.wait_for_status(list_status=[TaskStatus.RUNNING, TaskStatus.STOPPED, TaskStatus.ERROR,
                                                  TaskStatus.ABORTED, TaskStatus.UNKNOWN, TaskStatus.DONE])
@@ -305,7 +306,7 @@ class MgmtCliTest(ClusterTester):
         backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=1)
         self.db_cluster.nodes[0].run_nodetool(sub_cmd='snapshot', args='keyspace1')
         task_status = backup_task.wait_and_get_final_status(timeout=10800)
-        full_progress = "\n".join(mgr_cluster.sctool.run(
+        full_progress = "\n".join(line[0] for line in mgr_cluster.sctool.run(
             cmd=f"task progress {backup_task.id} -c {backup_task.cluster_id}"))
         assert task_status != TaskStatus.DONE, f"Task {backup_task.id} failed reaching DONE status:\n{full_progress}"
         self.verify_backup_success(bucket=location_list[0].split(':')[1], cluster_id=backup_task.cluster_id)
@@ -338,7 +339,7 @@ class MgmtCliTest(ClusterTester):
         self.wait_until_task_reaches_positive_progress(task=backup_task)
         self.db_cluster.nodes[0].run_nodetool(sub_cmd='snapshot', args=f'keyspace1')
         task_status = backup_task.wait_and_get_final_status(timeout=10800)
-        full_progress = "\n".join(mgr_cluster.sctool.run(
+        full_progress = "\n".join(line[0] for line in mgr_cluster.sctool.run(
             cmd=f"task progress {backup_task.id} -c {backup_task.cluster_id}"))
         assert task_status != TaskStatus.DONE, f"Task {backup_task.id} failed reaching DONE status:\n{full_progress}"
         self.verify_backup_success(bucket=location_list[0].split(':')[1], cluster_id=backup_task.cluster_id)
@@ -359,7 +360,7 @@ class MgmtCliTest(ClusterTester):
         backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=1)
         second_backup_task = mgr_cluster.create_backup_task({'location': location_list, "keyspace": ["keyspace1"]})
         task_status = second_backup_task.wait_and_get_final_status(timeout=10800)
-        full_progress = "\n".join(mgr_cluster.sctool.run(
+        full_progress = "\n".join(line[0] for line in mgr_cluster.sctool.run(
             cmd=f"task progress {backup_task.id} -c {backup_task.cluster_id}"))
         try:
             assert task_status != TaskStatus.DONE, f"Task {backup_task.id} failed reaching DONE status:\n{full_progress}"
@@ -386,7 +387,7 @@ class MgmtCliTest(ClusterTester):
         second_backup_task = mgr_cluster.create_backup_task({'location': location_list, "keyspace": ["keyspace2"]})
         task_status = backup_task.wait_and_get_final_status(timeout=10800)
         second_task_status = second_backup_task.wait_and_get_final_status(timeout=10800)
-        full_progress = "\n".join(mgr_cluster.sctool.run(
+        full_progress = "\n".join(line[0] for line in mgr_cluster.sctool.run(
             cmd=f"task progress {backup_task.id} -c {backup_task.cluster_id}"))
         second_full_progress = "\n".join(mgr_cluster.sctool.run(
             cmd=f"task progress {second_backup_task.id} -c {backup_task.cluster_id}"))
@@ -418,7 +419,7 @@ class MgmtCliTest(ClusterTester):
     #     backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=1)
     #     second_backup_task = mgr_cluster.create_backup_task({'location': location_list, "keyspace": ["keyspace1"]})
     #     task_status = backup_task.wait_and_get_final_status(timeout=10800)
-    #     full_progress = "\n".join(mgr_cluster.sctool.run(
+    #     full_progress = "\n".join(line[0] for line in mgr_cluster.sctool.run(
     #         cmd=f"task progress {backup_task.id} -c {backup_task.cluster_id}"))
     #     assert task_status != TaskStatus.DONE, f"Task {backup_task.id} failed reaching DONE status:\n{full_progress}"
     #     self.verify_backup_success(bucket=location_list[0].split(':')[1], cluster_id=backup_task.cluster_id)
