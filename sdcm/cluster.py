@@ -22,8 +22,10 @@ import re
 import tempfile
 import threading
 import time
+import traceback
 import uuid
 import itertools
+from collections import defaultdict
 from typing import List, Optional, Dict
 from textwrap import dedent
 from datetime import datetime
@@ -45,14 +47,13 @@ from sdcm import wait
 from sdcm.utils.common import deprecation, get_data_dir_path, verify_scylla_repo_file, S3Storage, get_my_ip, \
     get_latest_gemini_version, makedirs, normalize_ipv6_url, download_dir_from_cloud, generate_random_string
 from sdcm.utils.distro import Distro
-from sdcm.utils.docker import ContainerManager
-from sdcm.utils.thread import raise_event_on_failure
+from sdcm.utils.docker_utils import ContainerManager
 from sdcm.utils.decorators import cached_property, retrying, log_run_info
 from sdcm.utils.get_username import get_username
 from sdcm.utils.remotewebbrowser import WebDriverContainerMixin
 from sdcm.utils.version_utils import SCYLLA_VERSION_RE, get_gemini_version
 from sdcm.sct_events import Severity, CoreDumpEvent, DatabaseLogEvent, \
-    ClusterHealthValidatorEvent, set_grafana_url, ScyllaBenchEvent
+    ClusterHealthValidatorEvent, set_grafana_url, ScyllaBenchEvent, raise_event_on_failure
 from sdcm.utils.auto_ssh import AutoSshContainerMixin
 from sdcm.utils.rsyslog import RSYSLOG_SSH_TUNNEL_LOCAL_PORT
 from sdcm.logcollector import GrafanaSnapshot, GrafanaScreenShot, PrometheusSnapshots, MonitoringStack
@@ -144,17 +145,27 @@ class Setup:
             cls._tester_obj = tester_obj
 
     @classmethod
-    def logdir(cls):
-        if not cls._logdir:
-            sct_base = os.path.expanduser(os.environ.get('_SCT_LOGDIR', '~/sct-results'))
-            date_time_formatted = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-            cls._logdir = os.path.join(sct_base, str(date_time_formatted))
-            makedirs(cls._logdir)
+    def base_logdir(cls) -> str:
+        return os.path.expanduser(os.environ.get("_SCT_LOGDIR", "~/sct-results"))
 
-            latest_symlink = os.path.join(sct_base, 'latest')
+    @classmethod
+    def make_new_logdir(cls, update_latest_symlink: bool, postfix: str = "") -> str:
+        base = cls.base_logdir()
+        logdir = os.path.join(base, datetime.now().strftime("%Y%m%d-%H%M%S-%f") + postfix)
+        os.makedirs(logdir, exist_ok=True)
+        LOGGER.info("New directory created: %s", logdir)
+        if update_latest_symlink:
+            latest_symlink = os.path.join(base, "latest")
             if os.path.islink(latest_symlink):
                 os.remove(latest_symlink)
-            os.symlink(os.path.relpath(cls._logdir, sct_base), latest_symlink)
+            os.symlink(os.path.relpath(logdir, base), latest_symlink)
+            LOGGER.info("Symlink `%s' updated to `%s'", latest_symlink, logdir)
+        return logdir
+
+    @classmethod
+    def logdir(cls) -> str:
+        if not cls._logdir:
+            cls._logdir = cls.make_new_logdir(update_latest_symlink=True)
             os.environ['_SCT_TEST_LOGDIR'] = cls._logdir
         return cls._logdir
 
@@ -299,6 +310,10 @@ class ScyllaRequirementError(Exception):
     pass
 
 
+class NodeStayInClusterAfterDecommission(Exception):
+    """ raise after decommission finished but node stay in cluster"""
+
+
 def prepend_user_prefix(user_prefix, base_name):
     if not user_prefix:
         user_prefix = DEFAULT_USER_PREFIX
@@ -426,6 +441,10 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
             ContainerManager.run_container(self, "auto_ssh:rsyslog",
                                            local_port=Setup.RSYSLOG_ADDRESS[1],
                                            remote_port=RSYSLOG_SSH_TUNNEL_LOCAL_PORT)
+
+    @property
+    def region(self):
+        raise NotImplementedError()
 
     @cached_property
     def tags(self) -> Dict[str, str]:
@@ -1751,6 +1770,7 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
         """)
         self.remoter.run('bash -cxe "%s"' % setup_script)
 
+    @retrying(n=3, sleep_time=10, allowed_exceptions=(AssertionError,), message="Retrying on getting scylla repo")
     def download_scylla_repo(self, scylla_repo):
         if not scylla_repo:
             self.log.error("Scylla YUM repo file url is not provided, it should be defined in configuration YAML!!!")
@@ -2633,7 +2653,7 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
         return self.remoter.run(cmd).stdout.splitlines()
 
 
-class BaseCluster:  # pylint: disable=too-many-instance-attributes
+class BaseCluster:  # pylint: disable=too-many-instance-attributes,too-many-public-methods
     """
     Cluster of Node objects.
     """
@@ -2690,6 +2710,14 @@ class BaseCluster:  # pylint: disable=too-many-instance-attributes
         assert '_SCT_TEST_LOGDIR' in os.environ
         self.logdir = os.path.join(os.environ['_SCT_TEST_LOGDIR'], self.name)
         makedirs(self.logdir)
+
+    def nodes_by_region(self, nodes=None) -> dict:
+        """:returns {region_name: [list of nodes]}"""
+        nodes = nodes if nodes else self.nodes
+        grouped_by_region = defaultdict(list)
+        for node in nodes:
+            grouped_by_region[node.region].append(node)
+        return grouped_by_region
 
     def send_file(self, src, dst, verbose=False):
         for loader in self.nodes:
@@ -2794,7 +2822,17 @@ class BaseCluster:  # pylint: disable=too-many-instance-attributes
 
 
 class NodeSetupFailed(Exception):
-    pass
+    def __init__(self, node, error_msg, traceback_str=""):
+        super(NodeSetupFailed, self).__init__(error_msg)
+        self.node = node
+        self.error_msg = error_msg
+        self.traceback_str = "\n" + traceback_str if traceback_str else ""
+
+    def __str__(self):
+        return f"[{self.node}] NodeSetupFailed: {self.error_msg}{self.traceback_str}"
+
+    def __repr__(self):
+        return self.__str__()
 
 
 class NodeSetupTimeout(Exception):
@@ -2818,15 +2856,13 @@ def wait_for_init_wrap(method):
         _queue = queue.Queue()
 
         @raise_event_on_failure
-        def node_setup(node):
-            status = True
+        def node_setup(_node):
+            exception_details = None
             try:
-                cl_inst.node_setup(node, **setup_kwargs)
-            except Exception:  # pylint: disable=broad-except
-                cl_inst.log.exception('Node setup failed: %s', str(node))
-                status = False
-
-            _queue.put((node, status))
+                cl_inst.node_setup(_node, **setup_kwargs)
+            except Exception as ex:  # pylint: disable=broad-except
+                exception_details = (str(ex), traceback.format_exc())
+            _queue.put((_node, exception_details))
             _queue.task_done()
 
         start_time = time.time()
@@ -2842,9 +2878,9 @@ def wait_for_init_wrap(method):
         while len(results) != len(node_list):
             time_elapsed = time.time() - start_time
             try:
-                node, node_status = _queue.get(block=True, timeout=5)
-                if not node_status:
-                    raise NodeSetupFailed(f"{node}:{node_status}")
+                node, setup_exception = _queue.get(block=True, timeout=5)
+                if setup_exception:
+                    raise NodeSetupFailed(node=node, error_msg=setup_exception[0], traceback_str=setup_exception[1])
                 results.append(node)
                 cl_inst.log.info("(%d/%d) nodes ready, node %s. Time elapsed: %d s",
                                  len(results), len(node_list), str(node), int(time_elapsed))
@@ -3307,7 +3343,7 @@ class BaseScyllaCluster:  # pylint: disable=too-many-public-methods
             if node.is_scylla_installed():
                 install_scylla = False
             else:
-                raise NodeSetupFailed(f"There is no pre-installed ScyllaDB on {node}")
+                raise Exception("There is no pre-installed ScyllaDB")
 
         if not Setup.REUSE_CLUSTER:
             if install_scylla:
@@ -3475,6 +3511,40 @@ class BaseScyllaCluster:  # pylint: disable=too-many-public-methods
 
         for node in self.nodes:
             node.run_nodetool('repair')
+
+    def decommission(self, node):
+        def get_node_ip_list(verification_node):
+            try:
+                ip_node_list = []
+                status = self.get_nodetool_status(verification_node)
+                for nodes_ips in status.values():
+                    ip_node_list.extend(nodes_ips.keys())
+                return ip_node_list
+            except Exception as details:  # pylint: disable=broad-except
+                LOGGER.error(str(details))
+                return None
+
+        target_node_ip = node.ip_address
+        node.run_nodetool("decommission")
+        verification_node = random.choice(self.nodes)
+        node_ip_list = get_node_ip_list(verification_node)
+        while verification_node == node or node_ip_list is None:
+            verification_node = random.choice(self.nodes)
+            node_ip_list = get_node_ip_list(verification_node)
+
+        if target_node_ip in node_ip_list:
+            cluster_status = self.get_nodetool_status(verification_node)
+            error_msg = ('Node that was decommissioned %s still in the cluster. '
+                         'Cluster status info: %s' % (node,
+                                                      cluster_status))
+
+            LOGGER.error('Decommission %s FAIL', node)
+            LOGGER.error(error_msg)
+            raise NodeStayInClusterAfterDecommission(error_msg)
+
+        LOGGER.info('Decommission %s PASS', node)
+        self.terminate_node(node)  # pylint: disable=no-member
+        Setup.tester_obj().monitors.reconfigure_scylla_monitoring()
 
 
 class BaseLoaderSet():
@@ -3853,6 +3923,7 @@ class BaseLoaderSet():
             # Select first seed node to send the scylla-bench cmds
             ips = node_list[0].private_ip_address
 
+            result = None
             try:
                 result = node.remoter.run(
                     cmd="/$HOME/go/bin/{name} -nodes {ips}".format(name=stress_cmd.strip(), ips=ips),
@@ -3860,13 +3931,19 @@ class BaseLoaderSet():
                     log_file=log_file_name)
             except Exception as exc:  # pylint: disable=broad-except
                 errors_str = format_stress_cmd_error(exc)
-                ScyllaBenchEvent(type='failure', node=str(node), stress_cmd=stress_cmd,
-                                 log_file_name=log_file_name, severity=Severity.CRITICAL,
+                if "truncate: seastar::rpc::timeout_error" in errors_str:
+                    event_type, event_severity = 'timeout', Severity.ERROR
+                else:
+                    event_type, event_severity = 'failure', Severity.CRITICAL
+
+                ScyllaBenchEvent(type=event_type, node=str(node), stress_cmd=stress_cmd,
+                                 log_file_name=log_file_name, severity=event_severity,
                                  errors=[errors_str])
+            else:
+                ScyllaBenchEvent(type='finish', node=str(node), stress_cmd=stress_cmd, log_file_name=log_file_name)
 
-            ScyllaBenchEvent(type='finish', node=str(node), stress_cmd=stress_cmd, log_file_name=log_file_name)
-
-            _queue[RES_QUEUE].put((node, result))
+            if result is not None:
+                _queue[RES_QUEUE].put((node, result))
             _queue[TASK_QUEUE].task_done()
 
         if round_robin:
@@ -3897,7 +3974,7 @@ class BaseLoaderSet():
         for loader in self.nodes:
             sb_active = loader.remoter.run(cmd='pgrep -f gemini', verbose=False, ignore_status=True)
             if sb_active.exit_status == 0:
-                kill_result = loader.remoter.run('pkill -f -TERM gemini', ignore_status=True)
+                kill_result = loader.remoter.run('pkill -f -QUIT gemini', ignore_status=True)
                 if kill_result.exit_status != 0:
                     self.log.warning('Terminate gemini on node %s:\n%s', loader, kill_result)
 

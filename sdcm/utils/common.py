@@ -52,6 +52,7 @@ import libcloud.storage.types
 import yaml
 from libcloud.compute.providers import get_driver
 from libcloud.compute.types import Provider
+from packaging.version import Version
 
 from sdcm.utils.ssh_agent import SSHAgent
 from sdcm.utils.decorators import retrying
@@ -59,6 +60,7 @@ from sdcm.utils.decorators import retrying
 
 LOGGER = logging.getLogger('utils')
 DEFAULT_AWS_REGION = "eu-west-1"
+DOCKER_CGROUP_RE = re.compile("/docker/([0-9a-f]+)")
 
 
 def deprecation(message):
@@ -245,11 +247,10 @@ def get_latest_gemini_version():
     bucket_name = 'downloads.scylladb.com'
 
     results = S3Storage(bucket_name).search_by_path(path='gemini')
-    versions = set()
-    for result_file in results:
-        versions.add(result_file.split('/')[1])
+    versions = {Version(result_file.split('/')[1]) for result_file in results}
+    latest_version = max(versions)
 
-    return str(sorted(versions)[-1])
+    return latest_version.public
 
 
 def list_logs_by_test_id(test_id):
@@ -454,6 +455,15 @@ def clean_cloud_resources(tags_dict):
     return True
 
 
+def docker_current_container_id() -> Optional[str]:
+    with open("/proc/1/cgroup") as cgroup:
+        for line in cgroup:
+            match = DOCKER_CGROUP_RE.search(line)
+            if match:
+                return match.group(1)
+    return None
+
+
 def list_clients_docker(builder_name: Optional[str] = None, verbose: bool = False) -> Dict[str, docker.DockerClient]:
     log = LOGGER if verbose else Mock()
     docker_clients = {}
@@ -499,6 +509,8 @@ def list_resources_docker(tags_dict: Optional[dict] = None,
     log = LOGGER if verbose else Mock()
     filters = {}
 
+    current_container_id = docker_current_container_id()
+
     if tags_dict:
         filters["label"] = [f"{key}={value}" for key, value in tags_dict.items()]
 
@@ -508,6 +520,8 @@ def list_resources_docker(tags_dict: Optional[dict] = None,
     def get_containers(builder_name: str, docker_client: docker.DockerClient) -> None:
         log.info("%s: scan for Docker containers", builder_name)
         containers_list = docker_client.containers.list(filters=filters, sparse=True)
+        if current_container_id:
+            containers_list = [container for container in containers_list if container.id != current_container_id]
         if running:
             containers_list = [container for container in containers_list if container.status == "running"]
         else:
@@ -1149,6 +1163,8 @@ def get_db_tables(session, ks, with_compact_storage=True):
 
 # Add @retrying to prevent situation when nemesis failed on connection timeout when try to receive the
 # keyspace and table for the test
+
+
 @retrying(n=5, sleep_time=5)
 def get_non_system_ks_cf_list(db_node, request_timeout=300, filter_out_table_with_counter=False,  # pylint: disable=too-many-arguments
                               filter_out_mv=False, filter_empty_tables=True):
@@ -1786,3 +1802,13 @@ class PageFetcher:
         Returns bool indicating if there are any pages not retrieved.
         """
         return self.future.has_more_pages
+
+
+def get_docker_stress_image_name(tool_name=None):
+    if not tool_name:
+        return None
+    base_path = os.path.dirname(os.path.dirname((os.path.dirname(__file__))))
+    with open(os.path.join(base_path, "docker", tool_name, "image"), "r") as image_file:
+        result = image_file.read()
+
+    return result.strip()

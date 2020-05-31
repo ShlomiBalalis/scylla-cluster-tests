@@ -69,10 +69,16 @@ from sdcm.gemini_thread import GeminiStressThread
 from sdcm.ycsb_thread import YcsbStressThread
 from sdcm.ndbench_thread import NdBenchStressThread
 from sdcm.localhost import LocalHost
+from sdcm.cdclog_reader_thread import CDCLogReaderThread
 from sdcm.logcollector import SCTLogCollector, ScyllaLogCollector, MonitorLogCollector, LoaderLogCollector
 from sdcm.send_email import build_reporter, read_email_data_from_file, get_running_instances_for_email_report, \
     save_email_data_to_file
 from sdcm.utils.alternator import create_table as alternator_create_table
+
+try:
+    import cluster_cloud
+except ImportError:
+    cluster_cloud = None
 
 configure_logging()
 
@@ -558,7 +564,13 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):  # pylint: disa
     def get_cluster_aws(self, loader_info, db_info, monitor_info):
         # pylint: disable=too-many-locals,too-many-statements,too-many-branches
         if loader_info['n_nodes'] is None:
-            loader_info['n_nodes'] = int(self.params.get('n_loaders'))
+            n_loader_nodes = self.params.get('n_loaders')
+            if isinstance(n_loader_nodes, int):  # legacy type
+                loader_info['n_nodes'] = [n_loader_nodes]
+            elif isinstance(n_loader_nodes, str):  # latest type to support multiple datacenters
+                loader_info['n_nodes'] = [int(n) for n in n_loader_nodes.split()]
+            else:
+                self.fail('Unsupported parameter type: {}'.format(type(n_loader_nodes)))
         if loader_info['type'] is None:
             loader_info['type'] = self.params.get('instance_type_loader')
         if loader_info['disk_size'] is None:
@@ -675,15 +687,14 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):  # pylint: disa
 
                 credentials = [UserRemoteCredentials(key_file=cloud_credentials)]
                 params = dict(
-                    n_nodes=[self.params.get('n_db_nodes')],
-                    public_ips=self.params.get('db_nodes_public_ip', None),
-                    private_ips=self.params.get('db_nodes_private_ip', None),
+                    n_nodes=[0],
                     user_prefix=self.params.get('user_prefix', None),
                     credentials=credentials,
                     params=self.params,
-                    targets=dict(db_cluster=self.db_cluster, loaders=self.loaders),
                 )
-                return cluster_baremetal.ScyllaPhysicalCluster(**params)
+                if not cluster_cloud:
+                    raise ImportError("cluster_cloud isn't installed")
+                return cluster_cloud.ScyllaCloudCluster(**params)
             return None
 
         db_type = self.params.get('db_type')
@@ -811,13 +822,15 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):  # pylint: disa
         self.verify_stress_thread(cs_thread_pool=cs_thread_pool)
 
     def run_stress_thread(self, stress_cmd, duration=None, stress_num=1, keyspace_num=1, profile=None, prefix='',  # pylint: disable=too-many-arguments
-                          round_robin=False, stats_aggregate_cmds=True, keyspace_name=None, use_single_loader=False):
+                          round_robin=False, stats_aggregate_cmds=True, keyspace_name=None, use_single_loader=False,
+                          stop_test_on_failure=True):
 
         params = dict(stress_cmd=stress_cmd, duration=duration, stress_num=stress_num, keyspace_num=keyspace_num,
                       keyspace_name=keyspace_name, profile=profile, prefix=prefix, round_robin=round_robin,
                       stats_aggregate_cmds=stats_aggregate_cmds, use_single_loader=use_single_loader)
 
         if 'cassandra-stress' in stress_cmd:  # cs cmdline might started with JVM_OPTION
+            params['stop_test_on_failure'] = stop_test_on_failure
             return self.run_stress_cassandra_thread(**params)
         elif stress_cmd.startswith('scylla-bench'):
             return self.run_stress_thread_bench(**params)
@@ -829,7 +842,8 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):  # pylint: disa
             raise ValueError(f'Unsupported stress command: "{stress_cmd[:50]}..."')
 
     def run_stress_cassandra_thread(self, stress_cmd, duration=None, stress_num=1, keyspace_num=1, profile=None, prefix='',  # pylint: disable=too-many-arguments,unused-argument
-                                    round_robin=False, stats_aggregate_cmds=True, keyspace_name=None, use_single_loader=False):  # pylint: disable=too-many-arguments,unused-argument
+                                    round_robin=False, stats_aggregate_cmds=True, keyspace_name=None, use_single_loader=False,  # pylint: disable=too-many-arguments,unused-argument
+                                    stop_test_on_failure=True):  # pylint: disable=too-many-arguments,unused-argument
         # stress_cmd = self._cs_add_node_flag(stress_cmd)
         timeout = self.get_duration(duration)
         if self.create_stats:
@@ -845,7 +859,8 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):  # pylint: disa
                                           node_list=self.db_cluster.nodes,
                                           round_robin=round_robin,
                                           client_encrypt=self.db_cluster.nodes[0].is_client_encrypt,
-                                          keyspace_name=keyspace_name).run()
+                                          keyspace_name=keyspace_name,
+                                          stop_test_on_failure=stop_test_on_failure).run()
         scylla_encryption_options = self.params.get('scylla_encryption_options')
         if scylla_encryption_options and 'write' in stress_cmd:
             # Configure encryption at-rest for all test tables, sleep a while to wait the workload starts and test tables are created
@@ -902,6 +917,22 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):  # pylint: disa
                                    node_list=self.db_cluster.nodes,
                                    round_robin=round_robin, params=self.params).run()
 
+    def run_cdclog_reader_thread(self, stress_cmd, duration=None, stress_num=1, prefix='',  # pylint: disable=too-many-arguments
+                                 round_robin=False, stats_aggregate_cmds=True,
+                                 keyspace_name=None, base_table_name=None):   # pylint: disable=unused-argument
+        timeout = self.get_duration(duration)
+
+        if self.create_stats:
+            self.update_stress_cmd_details(stress_cmd, prefix, stresser="cdcreader", aggregate=stats_aggregate_cmds)
+        return CDCLogReaderThread(loader_set=self.loaders,
+                                  stress_cmd=stress_cmd,
+                                  timeout=timeout,
+                                  stress_num=stress_num,
+                                  node_list=self.db_cluster.nodes,
+                                  keyspace_name=keyspace_name,
+                                  base_table_name=base_table_name,
+                                  round_robin=round_robin, params=self.params).run()
+
     def run_gemini(self, cmd, duration=None):
 
         timeout = self.get_duration(duration)
@@ -949,6 +980,16 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):  # pylint: disa
         results = self.loaders.get_stress_results_bench(queue)
         if self.create_stats:
             self.update_stress_results(results)
+        return results
+
+    def verify_cdclog_reader_results(self, cdcreadstessors_queue, update_es=False):
+        results = cdcreadstessors_queue.get_results()
+        if not results:
+            self.log.warning("There are no cdclog_reader results")
+        if self.create_stats and update_es:
+            self.log.debug(results)
+            self.update_stress_results(results)
+
         return results
 
     @staticmethod
@@ -2208,7 +2249,7 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):  # pylint: disa
 
         start_time = format_timestamp(self.start_time)
         config_file_name = ";".join(os.path.splitext(os.path.basename(cfg))[0] for cfg in self.params["config_files"])
-        critical = self.get_test_failing_events()
+        critical = self.get_test_results('test')
         test_status = "FAILED" if critical else "SUCCESS"
         return {"build_url": os.environ.get("BUILD_URL"),
                 "end_time": format_timestamp(time.time()),

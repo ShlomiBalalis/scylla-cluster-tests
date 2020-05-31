@@ -5,6 +5,8 @@ import unittest
 import logging
 import glob
 import time
+import subprocess
+
 import pytest
 import click
 import click_completion
@@ -45,9 +47,27 @@ def install_callback(ctx, _, value):
     return sys.exit(0)
 
 
+def install_package_from_dir(ctx, _, directories):
+    if directories or not ctx.resilient_parsing:
+        for directory in directories:
+            subprocess.check_call(["sudo", sys.executable, "-m", "pip", "install", directory])
+    return directories
+
+
+def add_file_logger(level: int = logging.DEBUG) -> None:
+    cmd_path = "-".join(click.get_current_context().command_path.split()[1:])
+    logdir = Setup.make_new_logdir(update_latest_symlink=False, postfix=f"-{cmd_path}")
+    handler = logging.FileHandler(os.path.join(logdir, "hydra.log"))
+    handler.setLevel(level)
+    LOGGER.addHandler(handler)
+
+
 @click.group()
 @click.option('--install-bash-completion', is_flag=True, callback=install_callback, expose_value=False,
               help="Install completion for the current shell. Make sure to have psutil installed.")
+@click.option('--install-package-from-directory', callback=install_package_from_dir, multiple=True, envvar='PACKAGES_PATHS',
+              type=click.Path(), expose_value=False,
+              help="Install paths for extra python pacakges to install, scylla-cluster-plugins for example")
 def cli():
     pass
 
@@ -79,12 +99,13 @@ def cli():
 @click.option('--config-file', multiple=True, type=click.Path(exists=True), help="Test config .yaml to use, can have multiple of those")
 @click.pass_context
 def clean_resources(ctx, user, test_id, logdir, config_file):  # pylint: disable=too-many-arguments,too-many-branches
+    add_file_logger()
+
     params = dict()
 
     if config_file or logdir:
-
         if not logdir:
-            logdir = os.path.expandvars("$HOME/sct-results")
+            logdir = Setup.base_logdir()
 
         if logdir and not test_id:
             test_id = (search_test_id_in_latest(logdir), )
@@ -133,6 +154,8 @@ def clean_resources(ctx, user, test_id, logdir, config_file):  # pylint: disable
 @click.pass_context
 def list_resources(ctx, user, test_id, get_all, get_all_running, verbose):
     # pylint: disable=too-many-locals,too-many-arguments,too-many-branches,too-many-statements
+
+    add_file_logger()
 
     params = dict()
 
@@ -256,6 +279,7 @@ def list_resources(ctx, user, test_id, get_all, get_all_running, verbose):
 @cli.command('list-ami-versions', help='list Amazon Scylla formal AMI versions')
 @click.option('-r', '--region', type=click.Choice(AWS_REGIONS), default='eu-west-1')
 def list_ami_versions(region):
+    add_file_logger()
 
     amis = get_scylla_ami_versions(region)
 
@@ -273,6 +297,8 @@ def list_ami_versions(region):
 @click.option('-r', '--region', type=click.Choice(AWS_REGIONS), default='eu-west-1')
 @click.argument('version', type=str, default='branch-3.1:all')
 def list_ami_branch(region, version):
+    add_file_logger()
+
     def get_tags(ami):
         return {i['Key']: i['Value'] for i in ami.tags}
 
@@ -298,6 +324,8 @@ def list_ami_branch(region, version):
                                                          'jessie', 'stretch', 'buster']),  # Debian
               default=None, help='deb style versions')
 def list_repos(dist_type, dist_version):
+    add_file_logger()
+
     if not dist_type == 'centos' and dist_version is None:
         click.secho("when passing --dist-type=debian/ubuntu need to pass --dist-version as well", fg='red')
         sys.exit(1)
@@ -317,6 +345,8 @@ def list_repos(dist_type, dist_version):
 @click.argument('config_file', type=click.Path(exists=True))
 @click.option('-b', '--backend', type=click.Choice(SCTConfiguration.available_backends), default='aws')
 def conf(config_file, backend):
+    add_file_logger()
+
     if backend:
         os.environ['SCT_CLUSTER_BACKEND'] = backend
     os.environ['SCT_CONFIG_FILES'] = config_file
@@ -335,6 +365,8 @@ def conf(config_file, backend):
 @cli.command('conf-docs', help="Show all available configuration in yaml/markdown format")
 @click.option('-o', '--output-format', type=click.Choice(["yaml", "markdown"]), default="yaml", help="type of the output")
 def conf_docs(output_format):
+    add_file_logger()
+
     config_logger = logging.getLogger('sdcm.sct_config')
     config_logger.setLevel(logging.ERROR)
     if output_format == 'markdown':
@@ -347,6 +379,8 @@ def conf_docs(output_format):
 @click.option("-i", "--es-id", required=True, type=str, help="Id of the run in Elastic Search")
 @click.option("-e", "--emails", required=True, type=str, help="Comma separated list of emails. Example a@b.com,c@d.com")
 def perf_regression_report(es_id, emails):
+    add_file_logger()
+
     email_list = emails.split(",")
     click.secho(message="Will send Performance Regression report to %s" % email_list, fg="green")
     LOGGER.setLevel(logging.DEBUG)
@@ -365,6 +399,8 @@ def investigate():
 @investigate.command('show-logs', help="Show logs collected for testrun filtered by test-id")
 @click.argument('test_id')
 def show_log(test_id):
+    add_file_logger()
+
     table = PrettyTable(["Date", "Log type", "Link"])
     table.align = "l"
     files = list_logs_by_test_id(test_id)
@@ -378,6 +414,8 @@ def show_log(test_id):
 @click.option("--date-time", type=str, required=False, help='Datetime of monitor-set archive is collected')
 @click.option("--kill", type=bool, required=False, help='Kill and remove containers')
 def show_monitor(test_id, date_time, kill):
+    add_file_logger()
+
     click.echo('Search monitoring stack archive files for test id {} and restoring...'.format(test_id))
     # if debug_log:
     #     LOGGER.setLevel(logging.DEBUG)
@@ -406,6 +444,9 @@ def show_monitor(test_id, date_time, kill):
 @investigate.command('search-builder', help='Search builder where test run with test-id located')
 @click.argument('test-id')
 def search_builder(test_id):
+    logging.getLogger("paramiko").setLevel(logging.CRITICAL)
+    add_file_logger()
+
     results = get_builder_by_test_id(test_id)
     tbl = PrettyTable(['Builder Name', "Public IP", "path"])
     tbl.align = 'l'
@@ -468,6 +509,8 @@ def run_test(argv, backend, config, logdir):
 @cli.command("cloud-usage-report", help="Generate and send Cloud usage report")
 @click.option("-e", "--emails", required=True, type=str, help="Comma separated list of emails. Example a@b.com,c@d.com")
 def cloud_usage_report(emails):
+    add_file_logger()
+
     email_list = emails.split(",")
     click.secho(message="Will send Cloud Usage report to %s" % email_list, fg="green")
     cloud_report(mail_to=email_list)
@@ -480,7 +523,10 @@ def cloud_usage_report(emails):
 @click.option('--backend', help='Cloud where search nodes', default='aws')
 @click.option('--config-file', type=str, help='config test file path')
 def collect_logs(test_id=None, logdir=None, backend='aws', config_file=None):
+    add_file_logger()
+
     from sdcm.logcollector import Collector
+    logging.getLogger("paramiko").setLevel(logging.CRITICAL)
     if not os.environ.get('SCT_CLUSTER_BACKEND', None):
         os.environ['SCT_CLUSTER_BACKEND'] = backend
     if config_file and not os.environ.get('SCT_CONFIG_FILES', None):
@@ -501,9 +547,13 @@ def collect_logs(test_id=None, logdir=None, backend='aws', config_file=None):
 
 @cli.command('send-email', help='Send email with results for testrun')
 @click.option('--test-id', help='Test-id of run')
+@click.option('--test-status', help='Override test status FAILED|ABORTED')
+@click.option('--start-time', help='Override test start time')
 @click.option('--email-recipients', help="Send email to next recipients")
 @click.option('--logdir', help='Directory where to find testrun folder')
-def send_email(test_id=None, email_recipients=None, logdir=None):
+def send_email(test_id=None, test_status=None, start_time=None, email_recipients=None, logdir=None):
+    add_file_logger()
+
     from sdcm.send_email import get_running_instances_for_email_report, read_email_data_from_file, build_reporter
 
     if not email_recipients:
@@ -512,30 +562,41 @@ def send_email(test_id=None, email_recipients=None, logdir=None):
     LOGGER.info('Email will be sent to next recipients: %s', email_recipients)
     if not logdir:
         logdir = os.path.expanduser('~/sct-results')
-    testrun_dir = get_testrun_dir(test_id=test_id, base_dir=logdir)
-    if testrun_dir:
-        email_results_file = os.path.join(testrun_dir, "email_data.json")
-        test_results = read_email_data_from_file(email_results_file)
+    test_results = None
+    testrun_dir = None
+    if start_time is None:
+        start_time = format_timestamp(time.time())
     else:
-        test_results = None
+        start_time = format_timestamp(int(start_time))
+    if not test_status:
+        testrun_dir = get_testrun_dir(test_id=test_id, base_dir=logdir)
+        if testrun_dir:
+            email_results_file = os.path.join(testrun_dir, "email_data.json")
+            test_results = read_email_data_from_file(email_results_file)
 
     if test_results:
         reporter = test_results.get("reporter", "")
         test_results['nodes'] = get_running_instances_for_email_report(test_results['test_id'])
     else:
         reporter = "TestAborted"
+        if not test_status:
+            test_status = 'FAILED'
         test_results = {
             "build_url": os.environ.get("BUILD_URL"),
-            "end_time": format_timestamp(time.time()),
-            "subject": f"FAILED: {os.environ.get('JOB_NAME')}:",
+            "subject": f"{test_status}: {os.environ.get('JOB_NAME')}: {start_time}",
         }
     email_recipients = email_recipients.split(',')
     reporter = build_reporter(reporter, email_recipients, testrun_dir)
-    if reporter:
-        reporter.send_report(test_results)
-    else:
+    if not reporter:
         LOGGER.warning("No reporter found")
         sys.exit(1)
+    try:
+        reporter.send_report(test_results)
+    except Exception:  # pylint: disable=broad-except
+        build_reporter("TestAborted", email_recipients, testrun_dir).send_report({
+            "build_url": os.environ.get("BUILD_URL"),
+            "subject": f"FAILED: {os.environ.get('JOB_NAME')}: {start_time}",
+        })
 
 
 @cli.command('create-test-release-jobs', help="Create pipeline jobs for a new branch")
@@ -545,6 +606,8 @@ def send_email(test_id=None, email_recipients=None, logdir=None):
 @click.option('--sct_branch', default='master', type=str)
 @click.option('--sct_repo', default='git@github.com:scylladb/scylla-cluster-tests.git', type=str)
 def create_test_release_jobs(branch, username, password, sct_branch, sct_repo):
+    add_file_logger()
+
     base_job_dir = f'{branch}'
     server = JenkinsPipelines(username=username, password=password, base_job_dir=base_job_dir,
                               sct_branch_name=sct_branch, sct_repo=sct_repo)

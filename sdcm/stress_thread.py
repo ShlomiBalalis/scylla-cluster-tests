@@ -27,6 +27,7 @@ from sdcm.sct_events import CassandraStressEvent
 from sdcm.utils.common import FileFollowerThread, makedirs, generate_random_string, get_profile_content
 from sdcm.sct_events import CassandraStressLogEvent, Severity
 
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -77,7 +78,7 @@ class CassandraStressEventsPublisher(FileFollowerThread):
 
 class CassandraStressThread():  # pylint: disable=too-many-instance-attributes
     def __init__(self, loader_set, stress_cmd, timeout, stress_num=1, keyspace_num=1, keyspace_name='',  # pylint: disable=too-many-arguments
-                 profile=None, node_list=None, round_robin=False, client_encrypt=False):
+                 profile=None, node_list=None, round_robin=False, client_encrypt=False, stop_test_on_failure=True):
         if not node_list:
             node_list = []
         self.loader_set = loader_set
@@ -90,6 +91,7 @@ class CassandraStressThread():  # pylint: disable=too-many-instance-attributes
         self.node_list = node_list
         self.round_robin = round_robin
         self.client_encrypt = client_encrypt
+        self.stop_test_on_failure = stop_test_on_failure
 
         self.executor = None
         self.results_futures = []
@@ -128,12 +130,28 @@ class CassandraStressThread():  # pylint: disable=too-many-instance-attributes
                           3]  # make sure each loader is targeting on datacenter/region
             first_node = first_node[0] if first_node else self.node_list[0]
             stress_cmd += " -node {}".format(first_node.ip_address)
-
-        stress_cmd += ' -errors skip-unsupported-columns'
-
+        if 'skip-unsupported-columns' in self._get_available_suboptions(node, '-errors'):
+            stress_cmd = self._add_errors_option(stress_cmd, ['skip-unsupported-columns'])
         return stress_cmd
 
-    def _run_stress(self, node, loader_idx, cpu_idx, keyspace_idx):
+    @staticmethod
+    def _add_errors_option(stress_cmd: str, to_add: list):
+        to_add = (' '.join(to_add))
+        if ' -errors' not in stress_cmd:
+            return stress_cmd + ' -errors ' + to_add
+        return re.sub('-errors([ ]+[^-][a-zA-Z0-9-]+)+([ ]* -[a-z]+|[ ]*)', '-errors\\1 ' + to_add + '\\2', stress_cmd)
+
+    def _get_available_suboptions(self, node, option):
+        try:
+            result = node.remoter.run(
+                cmd=f'cassandra-stress help {option} | grep "^Usage:"',
+                timeout=self.timeout,
+                ignore_status=True).stdout
+        except Exception:  # pylint: disable=broad-except
+            return []
+        return re.findall(r' *\[([\w-]+?)[=?]*\] *', result)
+
+    def _run_stress(self, node, loader_idx, cpu_idx, keyspace_idx):  # pylint: disable=too-many-locals
         stress_cmd = self.create_stress_cmd(node, loader_idx, keyspace_idx)
 
         if self.profile:
@@ -178,8 +196,12 @@ class CassandraStressThread():  # pylint: disable=too-many-instance-attributes
                                           log_file=log_file_name)
             except Exception as exc:  # pylint: disable=broad-except
                 errors_str = format_stress_cmd_error(exc)
-                CassandraStressEvent(type='failure', node=str(node), stress_cmd=stress_cmd,
-                                     log_file_name=log_file_name, severity=Severity.CRITICAL,
+
+                event_type = 'failure' if self.stop_test_on_failure else 'error'
+                event_severity = Severity.CRITICAL if self.stop_test_on_failure else Severity.ERROR
+
+                CassandraStressEvent(type=event_type, node=str(node), stress_cmd=stress_cmd,
+                                     log_file_name=log_file_name, severity=event_severity,
                                      errors=[errors_str])
 
         CassandraStressEvent(type='finish', node=str(node), stress_cmd=stress_cmd, log_file_name=log_file_name)
@@ -269,3 +291,70 @@ class CassandraStressThread():  # pylint: disable=too-many-instance-attributes
                     errors += ['%s: %s' % (node, line.strip())]
 
         return cs_summary, errors
+
+
+class DockerBasedStressThread:
+    # pylint: disable=too-many-instance-attributes
+    def __init__(self, loader_set, stress_cmd, timeout, stress_num=1, node_list=None,  # pylint: disable=too-many-arguments
+                 round_robin=False, params=None):
+        self.loader_set = loader_set
+        self.stress_cmd = stress_cmd
+        self.timeout = timeout
+        self.stress_num = stress_num
+        self.node_list = node_list if node_list else []
+        self.round_robin = round_robin
+        self.params = params if params else dict()
+        self.loaders = []
+
+        self.executor = None
+        self.results_futures = []
+        self.max_workers = 0
+        self.shell_marker = generate_random_string(20)
+        self.shutdown_timeout = 180  # extra 3 minutes
+
+    def run(self):
+        if self.round_robin:
+            self.stress_num = 1
+            loaders = [self.loader_set.get_loader()]
+            LOGGER.debug("Round-Robin through loaders, Selected loader is {} ".format(loaders))
+        else:
+            loaders = self.loader_set.nodes
+        self.loaders = loaders
+
+        self.max_workers = len(loaders) * self.stress_num
+        LOGGER.debug("Starting %d %s Worker threads", self.max_workers, self.__class__.__name__)
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers)
+
+        for loader_idx, loader in enumerate(loaders):
+            for cpu_idx in range(self.stress_num):
+                self.results_futures += [self.executor.submit(self._run_stress, *(loader, loader_idx, cpu_idx))]
+
+        return self
+
+    def _run_stress(self, loader, loader_idx, cpu_idx):
+        raise NotImplementedError()
+
+    def get_results(self):
+        results = []
+        timeout = self.timeout + 120
+        LOGGER.debug('Wait for %s stress threads results', self.max_workers)
+        for future in concurrent.futures.as_completed(self.results_futures, timeout=timeout):
+            results.append(future.result())
+
+        return results
+
+    def verify_results(self):
+        results = []
+        errors = []
+        timeout = self.timeout + 120
+        LOGGER.debug('Wait for %s stress threads to verify', self.max_workers)
+        for future in concurrent.futures.as_completed(self.results_futures, timeout=timeout):
+            results.append(future.result())
+
+        return results, errors
+
+    def kill(self):
+        for loader in self.loaders:
+            loader.remoter.run(cmd=f"docker rm -f `docker ps -a -q --filter label=shell_marker={self.shell_marker}`",
+                               timeout=60,
+                               ignore_status=True)

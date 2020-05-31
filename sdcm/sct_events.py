@@ -4,6 +4,8 @@ import os
 import re
 import logging
 import json
+from functools import wraps
+from traceback import format_exc
 from json import JSONEncoder
 import signal
 import time
@@ -623,16 +625,16 @@ class ScyllaBenchEvent(SctEvent):
 
     def __str__(self):
         if self.errors:
-            return "{0}: type={1.type} node={1.node}\n{2}".format(
+            return "{0}: type={1.type} node={1.node} stress_cmd={1.stress_cmd} error={2}".format(
                 super(ScyllaBenchEvent, self).__str__(), self, "\n".join(self.errors))
 
-        return "{0}: type={1.type} node={1.node}\nstress_cmd={1.stress_cmd}".format(
+        return "{0}: type={1.type} node={1.node} stress_cmd={1.stress_cmd}".format(
             super(ScyllaBenchEvent, self).__str__(), self)
 
 
-class YcsbStressEvent(SctEvent):
+class StressEvent(SctEvent):
     def __init__(self, type, node, severity=Severity.NORMAL, stress_cmd=None, log_file_name=None, errors=None):  # pylint: disable=redefined-builtin,too-many-arguments
-        super(YcsbStressEvent, self).__init__()
+        super(StressEvent, self).__init__()
         self.type = type
         self.node = str(node)
         self.stress_cmd = stress_cmd
@@ -642,14 +644,22 @@ class YcsbStressEvent(SctEvent):
         self.publish()
 
     def __str__(self):
-        fmt = f"{super(YcsbStressEvent, self).__str__()}: type={self.type} node={self.node}\nstress_cmd={self.stress_cmd}"
+        fmt = f"{super(StressEvent, self).__str__()}: type={self.type} node={self.node}\nstress_cmd={self.stress_cmd}"
         if self.errors:
             errors_str = '\n'.join(self.errors)
             return f"{fmt}\nerrors:\n\n{errors_str}"
         return fmt
 
 
-class NdbenchStressEvent(YcsbStressEvent):
+class YcsbStressEvent(StressEvent):
+    pass
+
+
+class NdbenchStressEvent(StressEvent):
+    pass
+
+
+class CDCReaderStressEvent(YcsbStressEvent):
     pass
 
 
@@ -911,9 +921,10 @@ class EventsFileLogger(Process):  # pylint: disable=too-many-instance-attributes
                         if limit and len(events_bucket) >= limit:
                             events_bucket.pop(0)
                         events_bucket.append(event)
-            except Exception:  # pylint: disable=broad-except
+            except Exception as exc:  # pylint: disable=broad-except
+                LOGGER.info("failed to read %s file, due to the %s", events_file_path, str(exc))
                 if not output.get(severity.name, None):
-                    output[severity.name] = []
+                    output[severity.name] = [f"failed to read {events_file_path} file, due to the {str(exc)}"]
         return output
 
 
@@ -999,3 +1010,22 @@ def EVENT_FILTER_TIMEOUT():  # pylint: disable=invalid-name
 
 
 atexit.register(stop_events_device)
+
+
+def raise_event_on_failure(func):
+    """
+    Decorate a function that is running inside a thread,
+    when exception is raised in this function,
+    will raise an Error severity event
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        result = None
+        _test_pid = os.getpid()
+        try:
+            result = func(*args, **kwargs)
+        except Exception as ex:  # pylint: disable=broad-except
+            ThreadFailedEvent(message=str(ex), traceback=format_exc())
+
+        return result
+    return wrapper

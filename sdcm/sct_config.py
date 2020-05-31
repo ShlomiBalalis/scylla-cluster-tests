@@ -137,6 +137,9 @@ class SCTConfiguration(dict):
         dict(name="cloud_credentials_path", env="SCT_CLOUD_CREDENTIALS_PATH", type=str,
              help="""Path to your user credentials. qa key are downloaded automatically from S3 bucket"""),
 
+        dict(name="cloud_cluster_id", env="SCT_CLOUD_CLUSTER_ID", type=int,
+             help="""scylla cloud cluster id"""),
+
         dict(name="cloud_prom_bearer_token", env="SCT_CLOUD_PROM_BEARER_TOKEN", type=str,
              help="""scylla cloud promproxy bearer_token to federate monitoring data into our monitoring instance"""),
 
@@ -370,6 +373,9 @@ class SCTConfiguration(dict):
              help="the aws_access_key_id that would be used for alternator"),
         dict(name="alternator_secret_access_key", env="SCT_ALTERNATOR_SECRET_ACCESS_KEY", type=str,
              help="the aws_secret_access_key that would be used for alternator"),
+
+        dict(name="region_aware_loader", env="SCT_REGION_AWARE_LOADER", type=bool,
+             help="When in multi region mode, run stress on loader that is located in the same region as db node"),
 
         dict(name="append_scylla_args", env="SCT_APPEND_SCYLLA_ARGS", type=str,
              help="More arguments to append to scylla command line"),
@@ -913,6 +919,17 @@ class SCTConfiguration(dict):
 
         dict(name="use_preinstalled_scylla", env="SCT_USE_PREINSTALLED_SCYLLA", type=bool,
              help="Don't install/update ScyllaDB on DB nodes"),
+        dict(name="stress_cdclog_reader_cmd", env="SCT_STRESS_CDCLOG_READER_CMD",
+             type=str,
+             help="""cdc-stressor command to read cdc_log table.
+                    You can specify everything but the -node , -keyspace, -table, parameter, which is going to
+                    be provided by the test suite infrastructure.
+                    multiple commands can passed as a list"""),
+
+        dict(name="store_cdclog_reader_stats_in_es", env="SCT_STORE_CDCLOG_READER_STATS_IN_ES",
+             type=boolean,
+             help="""Add cdclog reader stats to ES for future performance result calculating"""),
+
     ]
 
     required_params = ['cluster_backend', 'test_duration', 'n_db_nodes', 'n_loaders', 'use_preinstalled_scylla',
@@ -936,8 +953,8 @@ class SCTConfiguration(dict):
         'baremetal': ['db_nodes_private_ip', 'db_nodes_public_ip', 'user_credentials_path'],
 
         'aws-siren': ["user_prefix", "instance_type_loader", "region_name", "security_group_ids", "subnet_id",
-                      "cloud_credentials_path", "authenticator_user", "authenticator_password", "db_nodes_public_ip",
-                      "db_nodes_private_ip", "nemesis_filter_seeds"]
+                      "cloud_credentials_path", "authenticator_user", "authenticator_password", "cloud_cluster_id",
+                      "nemesis_filter_seeds"]
     }
 
     defaults_config_files = {

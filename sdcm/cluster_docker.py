@@ -22,7 +22,7 @@ from typing import Optional, Union, Dict
 
 from sdcm import cluster
 from sdcm.remote import LOCALRUNNER
-from sdcm.utils.docker import get_docker_bridge_gateway, Container, ContainerManager, DockerException
+from sdcm.utils.docker_utils import get_docker_bridge_gateway, Container, ContainerManager, DockerException
 from sdcm.utils.decorators import cached_property
 
 
@@ -229,7 +229,7 @@ class ScyllaDockerCluster(cluster.BaseScyllaCluster, DockerCluster):  # pylint: 
         node.wait_ssh_up(verbose=verbose)
 
         if not node.is_scylla_installed():
-            raise cluster.NodeSetupFailed(f"There is no pre-installed ScyllaDB on {node}")
+            raise Exception(f"There is no pre-installed ScyllaDB")
 
         self.check_aio_max_nr(node)
 

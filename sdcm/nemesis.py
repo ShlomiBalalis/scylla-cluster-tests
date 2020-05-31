@@ -69,10 +69,6 @@ class NoMandatoryParameter(Exception):
     """ raised from within a nemesis execution to skip this nemesis"""
 
 
-class NodeStayInClusterAfterDecommission(Exception):
-    """ raise after decommission finished but node stay in cluster"""
-
-
 class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-methods
 
     disruptive = False
@@ -442,42 +438,9 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         self.cluster.terminate_node(node)
         self.monitoring_set.reconfigure_scylla_monitoring()
 
-    def _decommission_cluster_node(self, node):
-        def get_node_ip_list(verification_node):
-            try:
-                ip_node_list = []
-                status = self.cluster.get_nodetool_status(verification_node)
-                for nodes_ips in status.values():
-                    ip_node_list.extend(nodes_ips.keys())
-                return ip_node_list
-            except Exception as details:  # pylint: disable=broad-except
-                self.log.error(str(details))
-                return None
-
-        target_node_ip = node.ip_address
-        node.run_nodetool("decommission")
-        verification_node = random.choice(self.cluster.nodes)
-        node_ip_list = get_node_ip_list(verification_node)
-        while verification_node == node or node_ip_list is None:
-            verification_node = random.choice(self.cluster.nodes)
-            node_ip_list = get_node_ip_list(verification_node)
-
-        if target_node_ip in node_ip_list:
-            cluster_status = self.cluster.get_nodetool_status(verification_node)
-            error_msg = ('Node that was decommissioned %s still in the cluster. '
-                         'Cluster status info: %s' % (node,
-                                                      cluster_status))
-
-            self.log.error('Decommission %s FAIL', node)
-            self.log.error(error_msg)
-            raise NodeStayInClusterAfterDecommission(error_msg)
-
-        self.log.info('Decommission %s PASS', node)
-        self._terminate_cluster_node(node)
-
     def disrupt_nodetool_decommission(self, add_node=True):
         self._set_current_disruption('Decommission %s' % self.target_node)
-        self._decommission_cluster_node(self.target_node)
+        self.cluster.decommission(self.target_node)
         if add_node:
             # When adding node after decommission the node is declared as up only after it completed bootstrapping,
             # increasing the timeout for now
@@ -513,7 +476,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         self._set_current_disruption('MajorCompaction %s' % self.target_node)
         self.target_node.run_nodetool("compact")
 
-    def _disable_disrupt_nodetool_refresh(self, big_sstable=True, skip_download=False):
+    def disrupt_nodetool_refresh(self, big_sstable=True, skip_download=False):
         self._set_current_disruption('Refresh keyspace1.standard1 on {}'.format(self.target_node.name))
         if big_sstable:
             # 100G, the big file will be saved to GCE image
@@ -522,14 +485,14 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             #        We had a solution to save the file in GCE image, it requires bigger boot disk.
             #        In my old test, the instance init is easy to fail. We can try to use a
             #        split shared disk to save the 100GB file.
-            sstable_url = 'https://s3.amazonaws.com/scylla-qa-team/keyspace1.standard1.tar.gz'
-            sstable_file = "/tmp/keyspace1.standard1.tar.gz"
-            sstable_md5 = '76cca3135e175d859c0efb67c6a7b233'
-        else:
-            # 100M (300000 rows)
-            sstable_url = 'https://s3.amazonaws.com/scylla-qa-team/keyspace1.standard1.100M.tar.gz'
+            # 100M (500000 rows)
+            sstable_url = 'https://s3.amazonaws.com/scylla-qa-team/refresh_nemesis/keyspace1.standard1.100M.tar.gz'
             sstable_file = '/tmp/keyspace1.standard1.100M.tar.gz'
-            sstable_md5 = 'f641f561067dd612ff95f2b89bd12530'
+            sstable_md5 = '9c5dd19cfc78052323995198b0817270'
+        else:
+            sstable_url = 'https://s3.amazonaws.com/scylla-qa-team/refresh_nemesis/keyspace1.standard1.tar.gz'
+            sstable_file = "/tmp/keyspace1.standard1.tar.gz"
+            sstable_md5 = 'c033a3649a1aec3ba9b81c446c6eecfd'
         if not skip_download:
             key_store = KeyStore()
             creds = key_store.get_scylladb_upload_credentials()
@@ -546,8 +509,9 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             self.target_node.remoter.run('sudo tar xvfz {} -C /var/lib/scylla/data/keyspace1/{}/upload/'.format(
                 sstable_file, upload_dir))
             self.target_node.run_nodetool(sub_cmd="refresh", args="-- keyspace1 standard1")
-            cmd = "select * from keyspace1.standard1 where key=0x314e344b4d504d4b4b30"
-            self.target_node.run_cqlsh(cmd)
+            cmd = "select * from keyspace1.standard1 where key=0x32373131364f334f3830"
+            result = self.target_node.run_cqlsh(cmd)
+            assert '(1 rows)' in result.stdout, 'The key is not loaded by `nodetool refresh`'
 
     def disrupt_nodetool_enospc(self, sleep_time=30, all_nodes=False):
         if all_nodes:
@@ -688,7 +652,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         # if keyspace doesn't exist, create it by cassandra-stress
         if ks not in test_keyspaces:
             stress_cmd = "cassandra-stress write n=400000 cl=QUORUM -port jmx=6868 -mode native cql3 -schema 'replication(factor=3)' -log interval=5"
-            cs_thread = self.tester.run_stress_thread(stress_cmd=stress_cmd, keyspace_name=ks)
+            cs_thread = self.tester.run_stress_thread(
+                stress_cmd=stress_cmd, keyspace_name=ks, stop_test_on_failure=False)
             cs_thread.verify_results()
 
     def disrupt_truncate(self):
@@ -1906,7 +1871,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             self.log.info("Next node will be removed %s", self.target_node)
             self.metrics_srv.event_start('del_node')
             try:
-                self._decommission_cluster_node(self.target_node)
+                self.cluster.decommission(self.target_node)
             finally:
                 self.metrics_srv.event_stop('del_node')
 
@@ -2128,22 +2093,22 @@ class MajorCompactionMonkey(Nemesis):
         self.disrupt_major_compaction()
 
 
-# class RefreshMonkey(Nemesis):
-#     disruptive = False
-#     run_with_gemini = False
-#
-#     @log_time_elapsed_and_status
-#     def disrupt(self):
-#         self.disrupt_nodetool_refresh()
+class RefreshMonkey(Nemesis):
+    disruptive = False
+    run_with_gemini = False
+
+    @log_time_elapsed_and_status
+    def disrupt(self):
+        self.disrupt_nodetool_refresh()
 
 
-# class RefreshBigMonkey(Nemesis):
-#     disruptive = False
-#     run_with_gemini = False
-#
-#     @log_time_elapsed_and_status
-#     def disrupt(self):
-#         self.disrupt_nodetool_refresh(big_sstable=True, skip_download=True)
+class RefreshBigMonkey(Nemesis):
+    disruptive = False
+    run_with_gemini = False
+
+    @log_time_elapsed_and_status
+    def disrupt(self):
+        self.disrupt_nodetool_refresh(big_sstable=True, skip_download=False)
 
 
 class EnospcMonkey(Nemesis):
