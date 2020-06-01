@@ -193,12 +193,12 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
             self.test_client_encryption()
 
     def test_backup_feature(self):
-        with self.subTest('Backup Multiple KS\' and Tables'):
-            self.test_backup_multiple_ks_tables()
-        with self.subTest('Backup to Location with path'):
-            self.test_backup_location_with_path()
-        with self.subTest('Test Backup Rate Limit'):
-            self.test_backup_rate_limit()
+        # with self.subTest('Backup Multiple KS\' and Tables'):
+        #     self.test_backup_multiple_ks_tables()
+        # with self.subTest('Backup to Location with path'):
+        #     self.test_backup_location_with_path()
+        # with self.subTest('Test Backup Rate Limit'):
+        #     self.test_backup_rate_limit()
         with self.subTest('Test Backup end of space'):  # Preferably at the end
             self.test_enospc_during_backup()
 
