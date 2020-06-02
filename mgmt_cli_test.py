@@ -199,6 +199,8 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
             self.test_backup_location_with_path()
         with self.subTest('Test Backup Rate Limit'):
             self.test_backup_rate_limit()
+        with self.subTest('Test large data set purge'):
+            self.test_large_data_set_purge()
         with self.subTest('Test Backup end of space'):  # Preferably at the end
             self.test_enospc_during_backup()
 
@@ -502,6 +504,41 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
             finally:
                 if has_enospc_been_reached:
                     Nemesis.clean_enospc_on_node(target_node=target_node, log_object=self.log, sleep_time=30)
+
+    def test_large_data_set_purge(self):
+        self.log.info('starting test_enospc_during_backup')
+        if not self.is_cred_file_configured:
+            self.update_config_file()
+        manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+        selected_host = self.get_cluster_hosts_ip()[0]
+        mgr_cluster = manager_tool.get_cluster(cluster_name=self.CLUSTER_NAME) \
+            or manager_tool.add_cluster(name=self.CLUSTER_NAME, host=selected_host,
+                                        auth_token=self.monitors.mgmt_auth_token)
+
+        self.log.debug("creating a large data set")
+        self.generate_load_and_wait_for_results()
+
+        self.log.debug("running a backup and deleting said large data set")
+        location_list = [f's3:{self.bucket_name}']
+        backup_task = mgr_cluster.create_backup_task(location_list=location_list, retention=2)
+        backup_task.wait_and_get_final_status(step=30)
+        assert backup_task.status == TaskStatus.DONE, "First backup failed! (Reason stated above)"
+
+        with self.cql_connection_patient(node=self.db_cluster.nodes[0]) as session:
+            session.execute("DROP keyspace keyspace1;")
+            session.execute("CREATE KEYSPACE ExtraData WITH REPLICATION = {'class': 'NetworkTopologyStrategy', "
+                            "'us-eastscylla_node_east': 2, 'us-west-2scylla_node_west': 1};")
+            session.execute("CREATE TABLE ExtraData.SmallTable (key int, c1 varchar, c2 varchar, "
+                            "PRIMARY KEY (key));")
+
+        self.log.debug("executing the backup several more time, so that a purge will occur")
+        for i in range(1, 4):
+            with self.cql_connection_patient(node=self.db_cluster.nodes[0]) as session:
+                session.execute(f"INSERT INTO ExtraData.SmallTable (key, c1, c2) VALUES ({i}, 'v1', 'v2');")
+            backup_task.start(cmd=f"task -c {backup_task.cluster_id} start {backup_task.id} --continue=false")
+            assert backup_task.status == TaskStatus.DONE, f"{i} backup failed! (Reason stated above)" \
+                                                          f"\n it's possible that the manager had issue purging" \
+                                                          f"the large data that was previously backed up"
 
     @staticmethod
     def _keyspace_value_in_progress_table(repair_task, repair_progress_table, keyspace_name):
