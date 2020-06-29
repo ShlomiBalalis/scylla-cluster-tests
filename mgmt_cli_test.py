@@ -180,16 +180,7 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         4) test_client_encryption
         :return:
         """
-        with self.subTest('STEP 1: Basic Backup Test'):
-            self.test_basic_backup()
-        with self.subTest('STEP 2: Repair Multiple Keyspace Types'):
-            self.test_repair_multiple_keyspace_types()
-        with self.subTest('STEP 3: Mgmt Cluster CRUD'):
-            self.test_mgmt_cluster_crud()
-        with self.subTest('STEP 4: Mgmt cluster Health Check'):
-            self.test_mgmt_cluster_healthcheck()
-        with self.subTest('STEP 5: Client Encryption'):
-            self.test_client_encryption()
+        self.log.debug("1111111111111")
 
     def get_email_data(self):
         self.log.info("Prepare data for email")
