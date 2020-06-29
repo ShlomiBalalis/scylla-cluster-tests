@@ -15,6 +15,7 @@
 
 import os
 import time
+import re
 from random import randint
 from invoke import exceptions
 
@@ -22,6 +23,7 @@ from sdcm import mgmt
 from sdcm.mgmt import HostStatus, HostSsl, HostRestStatus, TaskStatus, ScyllaManagerError, ScyllaManagerTool
 from sdcm.nemesis import MgmtRepair, DbEventsFilter
 from sdcm.tester import ClusterTester
+from sdcm.sct_events import InfoEvent
 
 
 class BackupFunctionsMixIn:
@@ -122,7 +124,7 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
             1) Run cassandra stress on cluster.
             2) Add cluster to Manager and run full repair via Nemesis
         """
-        self.generate_load_and_wait_for_results()
+        # self.generate_load_and_wait_for_results()
         self.log.debug("test_mgmt_cli: initialize MgmtRepair nemesis")
         mgmt_nemesis = MgmtRepair(tester_obj=self, termination_event=self.db_cluster.termination_event)
         mgmt_nemesis.disrupt()
@@ -171,6 +173,56 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         self.log.info("creating the table {} in the keyspace {}".format(table_name, keyspace_name))
         self.create_table(table_name, keyspace_name=keyspace_name)
 
+    @staticmethod
+    def _parse_stress_cmd(stress_cmd, params):
+        # Due to an issue with scylla & cassandra-stress - we need to create the counter table manually
+        if 'compression' in stress_cmd:
+            if 'keyspace_name' not in params:
+                compression_prefix = re.search('compression=(.*)Compressor', stress_cmd).group(1)
+                keyspace_name = "keyspace_{}".format(compression_prefix.lower())
+                params.update({'keyspace_name': keyspace_name})
+
+        return params
+
+    def _run_all_stress_cmds(self, stress_queue, params):
+        stress_cmds = params['stress_cmd']
+        if not isinstance(stress_cmds, list):
+            stress_cmds = [stress_cmds]
+        # In some cases we want the same stress_cmd to run several times (can be used with round_robin or not).
+        stress_multiplier = self.params.get('stress_multiplier', default=1)
+        if stress_multiplier > 1:
+            stress_cmds *= stress_multiplier
+
+        for stress_cmd in stress_cmds:
+            params.update({'stress_cmd': stress_cmd})
+            self._parse_stress_cmd(stress_cmd, params)
+
+            # Run all stress commands
+            self.log.debug('stress cmd: {}'.format(stress_cmd))
+            if 'cassandra-stress'in stress_cmd:
+                stress_queue.append(self.run_stress_thread(**params))
+            elif stress_cmd.startswith('scylla-bench'):
+                stress_queue.append(self.run_stress_thread_bench(stress_cmd=stress_cmd,
+                                                                 stats_aggregate_cmds=False,
+                                                                 round_robin=self.params.get('round_robin',
+                                                                                             default=False)))
+            elif stress_cmd.startswith('bin/ycsb'):
+                stress_queue.append(self.run_ycsb_thread(**params))
+
+            elif stress_cmd.startswith('ndbench'):
+                stress_queue.append(self.run_ndbench_thread(**params))
+
+            time.sleep(10)
+
+            # Remove "user profile" param for the next command
+            if 'profile' in params:
+                del params['profile']
+
+            if 'keyspace_name' in params:
+                del params['keyspace_name']
+
+        return stress_queue
+
     def test_manager_sanity(self):
         """
         Test steps:
@@ -180,16 +232,37 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         4) test_client_encryption
         :return:
         """
-        with self.subTest('STEP 1: Basic Backup Test'):
+        prepare_write_cmd = self.params.get('prepare_write_cmd')
+        stress_queue = list()
+        write_queue = list()
+
+        self._run_all_stress_cmds(write_queue, params={'stress_cmd': prepare_write_cmd,
+                                                       'keyspace_num': 1})
+        for stress in write_queue:
+            self.verify_stress_thread(cs_thread_pool=stress)
+
+        stress_write_cmd = self.params.get('stress_cmd_w', default=None)
+        params = {'keyspace_num': 1, 'stress_cmd': stress_write_cmd}
+        self._run_all_stress_cmds(stress_queue, params)
+
+        stress_read_cmd = self.params.get('stress_read_cmd', default=None)
+        params = {'keyspace_num': 1, 'stress_cmd': stress_read_cmd}
+        self._run_all_stress_cmds(stress_queue, params)
+
+        InfoEvent("test_mgmt_repair_nemesis starts")
+        with self.subTest('STEP 1: Repair nemesis'):
+            self.test_mgmt_repair_nemesis()
+        InfoEvent("test_mgmt_repair_nemesis Ends")
+
+        time.sleep(180)
+
+        InfoEvent("Basic Backup Test starts")
+        with self.subTest('STEP 2: Basic Backup Test'):
             self.test_basic_backup()
-        with self.subTest('STEP 2: Repair Multiple Keyspace Types'):
-            self.test_repair_multiple_keyspace_types()
-        with self.subTest('STEP 3: Mgmt Cluster CRUD'):
-            self.test_mgmt_cluster_crud()
-        with self.subTest('STEP 4: Mgmt cluster Health Check'):
-            self.test_mgmt_cluster_healthcheck()
-        with self.subTest('STEP 5: Client Encryption'):
-            self.test_client_encryption()
+        InfoEvent("Basic Backup Test Ends")
+
+        for stress in stress_queue:
+            self.verify_stress_thread(cs_thread_pool=stress)
 
     def get_email_data(self):
         self.log.info("Prepare data for email")
@@ -245,10 +318,10 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
         mgr_cluster = manager_tool.add_cluster(name=self.CLUSTER_NAME + '_basic', db_cluster=self.db_cluster,
                                                auth_token=self.monitors.mgmt_auth_token)
-        self.generate_load_and_wait_for_results()
+        # self.generate_load_and_wait_for_results()
         backup_task = mgr_cluster.create_backup_task(location_list=location_list)
         backup_task.wait_for_status(list_status=[TaskStatus.DONE])
-        self.verify_backup_success(mgr_cluster=mgr_cluster, backup_task=backup_task)
+        # self.verify_backup_success(mgr_cluster=mgr_cluster, backup_task=backup_task)
         self.log.info('finishing test_basic_backup')
 
     def test_backup_multiple_ks_tables(self):
