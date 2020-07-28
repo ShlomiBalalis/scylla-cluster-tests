@@ -207,14 +207,13 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         return email_data
 
     def test_backup_feature(self):
-        with self.subTest('Backup Multiple KS\' and Tables'):
-            self.test_backup_multiple_ks_tables()
-        with self.subTest('Backup to Location with path'):
-            self.test_backup_location_with_path()
-        with self.subTest('Test Backup Rate Limit'):
-            self.test_backup_rate_limit()
-        with self.subTest('Test Backup end of space'):  # Preferably at the end
-            self.test_enospc_during_backup()
+        self.log.debug("PREPARE")
+        self._run_stress(keyspace_name="keyspace_intensity")
+        for inten in [1, 0.8, 0.6, 0.4, 0.2, 0.1]:
+            with self.subTest(f'Repairing with intensity {inten}'):
+                self.log.debug(f'Repairing with intensity {inten}')
+                self.test_destroy_data_and_repair_for_thirty_minutes(keyspace_name="keyspace_intensity",
+                                                                     intensity=inten)
 
     def update_config_file(self):
         # FIXME: add to the nodes not in the same region as the bucket the bucket's region
@@ -516,6 +515,83 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
             finally:
                 if has_enospc_been_reached:
                     clean_enospc_on_node(target_node=target_node, sleep_time=30)
+
+    def _run_stress(self, keyspace_name):
+        self.log.debug("Running stress")
+        stress_cmd = self.params.get('stress_cmd')
+        stress_cmd = stress_cmd.replace("-schema ", f'-schema keyspace="{keyspace_name}" ')
+        stress_thread = self.run_stress_thread(stress_cmd=stress_cmd)
+
+        load_results = stress_thread.get_results()
+        self.log.info(f'load={load_results}')
+
+    def test_destroy_data_and_repair_for_thirty_minutes(self, keyspace_name, intensity):
+        self.log.debug("Deleting from node#3")
+        self.db_cluster.nodes[2].stop_scylla_server(verify_up=False, verify_down=True)
+        self.run_cmd_with_retry(cmd=f"sudo rm -rf /var/lib/scylla/data/{keyspace_name}",
+                                node=self.db_cluster.nodes[2])
+        self.db_cluster.nodes[2].start_scylla_server(verify_up=True, verify_down=False)
+        self.log.debug(f"Starting repair with intensity {intensity}")
+        manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+        mgr_cluster = manager_tool.get_cluster(cluster_name=self.CLUSTER_NAME) \
+            or manager_tool.add_cluster(name=self.CLUSTER_NAME, db_cluster=self.db_cluster,
+                                        auth_token=self.monitors.mgmt_auth_token)
+        repair_task = mgr_cluster.create_repair_task(node=self.db_cluster.nodes[2], keyspace=keyspace_name,
+                                                     intensity=intensity)
+        time.sleep(1800)
+        task_status = repair_task.status
+        if task_status == TaskStatus.RUNNING:
+            repair_task.stop()
+
+    # def test_repair_low_intensity(self):
+    #     self._repair_intensity_flag_template(intensity=0.2)
+    #
+    # def test_repair_high_intensity(self):
+    #     self._repair_intensity_flag_template(intensity=5)
+
+    # def _repair_intensity_flag_template(self, intensity):
+    #     if intensity > 1:
+    #         keyspace_name = "keyspace_high_intensity"
+    #     else:
+    #         keyspace_name = "keyspace_low_intensity"
+    #     node_to_shut_down = self.db_cluster.nodes[2]
+    #
+    #     manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+    #     mgr_cluster = manager_tool.get_cluster(cluster_name=self.CLUSTER_NAME) \
+    #         or manager_tool.add_cluster(name=self.CLUSTER_NAME, db_cluster=self.db_cluster,
+    #                                     auth_token=self.monitors.mgmt_auth_token)
+    #
+    #     self._run_stress_on_specific_nodes(nodes_to_shut_down=[node_to_shut_down],
+    #                                        keyspace_name=keyspace_name)
+    #     regular_repair_task = mgr_cluster.create_repair_task(node=node_to_shut_down, keyspace=keyspace_name)
+    #     regular_repair_task.wait_and_get_final_status()
+    #     assert regular_repair_task.status == TaskStatus.DONE, "regular repair task failed"
+    #     regular_repair_time = duration_to_timedelta(regular_repair_task.duration)
+    #
+    #     with self.cql_connection_patient(self.db_cluster.nodes[0]) as session:
+    #         session.execute(f"drop keyspace {keyspace_name};")
+    #
+    #     self._run_stress_on_specific_nodes(nodes_to_shut_down=[node_to_shut_down],
+    #                                        keyspace_name=keyspace_name)
+    #     repair_task_with_intensity = mgr_cluster.create_repair_task(node=node_to_shut_down,
+    #                                                                 keyspace=keyspace_name,
+    #                                                                 intensity=intensity)
+    #     repair_task_with_intensity.wait_and_get_final_status()
+    #     assert repair_task_with_intensity.status == TaskStatus.DONE, "repair task that uses intensity failed"
+    #
+    #     intensity_repair_time = duration_to_timedelta(repair_task_with_intensity.duration)
+    #
+    #     self.log.debug(f"results:\nThe time it took the regular repair: {regular_repair_time}\n"
+    #                    f"The time it took the repair with the intensity of {intensity}: {intensity_repair_time}")
+    #
+    #     if intensity > 1:
+    #         assert regular_repair_time > intensity_repair_time,\
+    #             f"A repair task with the intensity of {intensity} took longer than expected when " \
+    #             f"compared to a regular repair"
+    #     else:
+    #         assert regular_repair_time < intensity_repair_time, \
+    #             f"A repair task with the intensity of {intensity} did not take as long as expected" \
+    #             f" when compared to a regular repair"
 
     @staticmethod
     def _keyspace_value_in_progress_table(repair_task, repair_progress_table, keyspace_name):
