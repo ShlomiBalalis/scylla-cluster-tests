@@ -4295,6 +4295,7 @@ class BaseMonitorSet():  # pylint: disable=too-many-public-methods,too-many-inst
             node.install_mgmt(scylla_mgmt_repo=self.params.get('scylla_mgmt_repo'), auth_token=auth_token,
                               segments_per_repair=self.params.get('mgmt_segments_per_repair'),
                               package_url=package_path)
+            LOGGER.debug("IS IT UP YET")
             self.nodes[0].wait_manager_server_up()
 
     def configure_ngrok(self):
