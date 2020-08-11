@@ -13,7 +13,7 @@ import yaml
 
 from invoke.exceptions import UnexpectedExit, Failure
 import requests
-
+from tenacity import RetryError
 
 from sdcm import wait
 from sdcm.utils.distro import Distro
@@ -52,6 +52,7 @@ class HostStatus(Enum):
     UP = "UP"
     DOWN = "DOWN"
     TIMEOUT = "TIMEOUT"
+    UNAUTHORISED = "UNAUTHORISED"
 
     @classmethod
     def from_str(cls, output_str):
@@ -259,6 +260,17 @@ class ManagerTask(ScyllaManagerBase):
         return progress
 
     @property
+    def duration(self):
+        cmd = "task progress {} -c {}".format(self.id, self.cluster_id)
+        res = self.sctool.run(cmd=cmd)
+        duration = None
+        for task_property in res:
+            if task_property[0].startswith("Duration"):
+                duration = task_property[0].split()[1]
+                break
+        return duration
+
+    @property
     def detailed_progress(self):
         if self.status in [TaskStatus.NEW, TaskStatus.STARTING]:
             return " 0%"
@@ -283,6 +295,19 @@ class ManagerTask(ScyllaManagerBase):
                 return True, self.status
             time.sleep(5)
         return False, self.status
+
+    def has_percentage_reached_minimum(self, min_percentage):
+        current_percentage = self.progress.strip()
+        current_percentage_num = float(current_percentage[:-1])
+        return current_percentage_num >= min_percentage
+
+    def wait_for_minimal_progress_percentage(self, minimal_percentage, timeout=600, step=20):
+        try:
+            wait.wait_for(func=self.has_percentage_reached_minimum, step=step, timeout=timeout,
+                          min_percentage=minimal_percentage, throw_exc=True)
+        except RetryError:
+            LOGGER.error(f"Task {self.id} failed to reach a progress of {minimal_percentage} in {timeout} seconds")
+            raise
 
     def is_status_in_list(self, list_status, check_task_progress=False):
         """
@@ -438,7 +463,8 @@ class ManagerCluster(ScyllaManagerBase):
         return BackupTask(task_id=task_id, cluster_id=self.id, scylla_manager=self.manager_node)
 
     def create_repair_task(self, node=None, dc_list=None, token_ranges=None,  # pylint: disable=too-many-arguments
-                           keyspace=None, with_hosts=None, interval=None, num_retries=None, fail_fast=None):
+                           keyspace=None, with_hosts=None, interval=None, num_retries=None, fail_fast=None,
+                           intensity=None):
         # the interval string:
         # Amount of time after which a successfully completed task would be run again. Supported time units include:
         #
@@ -448,7 +474,7 @@ class ManagerCluster(ScyllaManagerBase):
         # s - seconds.
         cmd = "repair -c {}".format(self.id)
         if node is not None:
-            cmd += " --host {} ".format(node.address())
+            cmd += " --host {} ".format(node.ip_address)
         if dc_list is not None:
             dc_names = ','.join(dc_list)
             cmd += " --dc {} ".format(dc_names)
@@ -465,6 +491,8 @@ class ManagerCluster(ScyllaManagerBase):
             cmd += " --num-retries {}".format(num_retries)
         if fail_fast is not None:
             cmd += " --fail-fast"
+        if intensity is not None:
+            cmd += f" --intensity {intensity}"
         res = self.sctool.run(cmd=cmd, parse_table_res=False)
         if not res:
             raise ScyllaManagerError("Unknown failure for sctool {} command".format(cmd))
@@ -697,6 +725,19 @@ class ManagerCluster(ScyllaManagerBase):
         if len(value_list) == 1:
             return value_list[0]
         return default_value
+
+    def update_server_config(self, options, config_file='/etc/scylla-manager/scylla-manager.yaml'):
+        LOGGER.debug(f"Changing the following options in the scylla manager server config: {options}")
+        self.manager_node.remoter.run(f'sudo chmod o+w {config_file}')
+        configuration = yaml.load(self.manager_node.remoter.run(f'cat {config_file}').stdout)
+        if "repair" in options:
+            if "repair" not in configuration:
+                configuration["repair"] = {}
+            configuration["repair"].update(options["repair"])
+        new_configuration = yaml.dump(configuration, default_flow_style=False)
+        self.manager_node.remoter.run(f'sudo echo -e \"{new_configuration}\" > {config_file}')
+        self.manager_node.remoter.run('sudo systemctl restart scylla-manager')
+        self.manager_node.wait_manager_server_up()
 
 
 def verify_errorless_result(cmd, res):

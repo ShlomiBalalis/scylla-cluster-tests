@@ -16,6 +16,7 @@
 import os
 import time
 from random import randint
+from datetime import timedelta
 from invoke import exceptions
 
 from sdcm import mgmt
@@ -103,6 +104,23 @@ class BackupFunctionsMixIn:
         self.log.info(f'load={load_results}')
 
 
+def duration_to_timedelta(duration_string):
+    args = {"days": 0, "hours": 0, "minutes": 0, "seconds": 0}
+    if "d" in duration_string:
+        num_of_days, duration_string = duration_string.split("d")
+        args["days"] = int(num_of_days)
+    if "h" in duration_string:
+        num_of_hours, duration_string = duration_string.split("h")
+        args["hours"] = int(num_of_hours)
+    if "m" in duration_string:
+        num_of_minutes, duration_string = duration_string.split("m")
+        args["minutes"] = int(num_of_minutes)
+    if "s" in duration_string:
+        num_of_seconds, duration_string = duration_string.split("s")
+        args["seconds"] = int(num_of_seconds)
+    return timedelta(**args)
+
+
 # pylint: disable=too-many-public-methods
 class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
     """
@@ -180,16 +198,16 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         4) test_client_encryption
         :return:
         """
-        with self.subTest('STEP 1: Basic Backup Test'):
+        with self.subTest('STEP -1: Basic Backup Test'):
             self.test_basic_backup()
-        with self.subTest('STEP 2: Repair Multiple Keyspace Types'):
+        with self.subTest('STEP 0: Repair Multiple Keyspace Types'):
             self.test_repair_multiple_keyspace_types()
-        with self.subTest('STEP 3: Mgmt Cluster CRUD'):
-            self.test_mgmt_cluster_crud()
-        with self.subTest('STEP 4: Mgmt cluster Health Check'):
-            self.test_mgmt_cluster_healthcheck()
-        with self.subTest('STEP 5: Client Encryption'):
-            self.test_client_encryption()
+        with self.subTest('STEP 1: test_continue_repair_after_max_age'):
+            self.test_continue_repair_after_max_age()
+        with self.subTest('STEP 2: test_continue_repair_before_max_age'):
+            self.test_continue_repair_before_max_age()
+        with self.subTest('STEP 3: test_change_cluster_credentials'):
+            self.test_change_cluster_credentials()
 
     def get_email_data(self):
         self.log.info("Prepare data for email")
@@ -516,6 +534,82 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
             finally:
                 if has_enospc_been_reached:
                     clean_enospc_on_node(target_node=target_node, sleep_time=30)
+
+    def test_continue_repair_after_max_age(self):
+        self.log.info('starting test_continue_repair_after_max_age')
+        if not self.is_cred_file_configured:
+            self.update_config_file()
+        manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+        selected_host = self.get_cluster_hosts_ip()[0]
+        mgr_cluster = manager_tool.get_cluster(cluster_name=self.CLUSTER_NAME) \
+            or manager_tool.add_cluster(name=self.CLUSTER_NAME, host=selected_host,
+                                        auth_token=self.monitors.mgmt_auth_token)
+        self.generate_load_and_wait_for_results()
+        mgr_cluster.update_server_config(options={"repair": {"age_max": "1m"}})
+
+        repair_task = mgr_cluster.create_repair_task(node=self.db_cluster.nodes[1])
+        repair_task.wait_for_minimal_progress_percentage(minimal_percentage=60, timeout=1200)
+        repair_task.stop()
+        time.sleep(180)  # waiting a longer time than the age_max
+        repair_task.start(use_continue=True)
+        repair_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=2)
+        progress_percentage = repair_task.progress.replace("%", "")
+        repair_task.stop()
+        assert float(progress_percentage) < 5, "A repair task that was continued after being stopped for a " \
+            "longer time than specified in age_max has not started from scratch " \
+            "upon continuing"
+
+    def test_continue_repair_before_max_age(self):
+        self.log.info('starting test_continue_repair_before_max_age')
+        if not self.is_cred_file_configured:
+            self.update_config_file()
+        manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+        selected_host = self.get_cluster_hosts_ip()[0]
+        mgr_cluster = manager_tool.get_cluster(cluster_name=self.CLUSTER_NAME) \
+            or manager_tool.add_cluster(name=self.CLUSTER_NAME, host=selected_host,
+                                        auth_token=self.monitors.mgmt_auth_token)
+        self.generate_load_and_wait_for_results()
+        mgr_cluster.update_server_config(options={"repair": {"age_max": "12h"}})
+
+        repair_task = mgr_cluster.create_repair_task(node=self.db_cluster.nodes[1])
+        repair_task.wait_for_minimal_progress_percentage(minimal_percentage=60, timeout=1200)
+        repair_task.stop()
+        time.sleep(180)  # waiting a longer time than the age_max
+        repair_task.start(use_continue=True)
+        repair_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=180, step=2)
+        progress_percentage = repair_task.progress.replace("%", "")
+        repair_task.stop()
+        assert float(progress_percentage) > 59, "A repair task that was continued after being stopped for a " \
+            "shorter time than specified in age_max has not continued from the " \
+            "progress it has already repaired upon continuing"
+
+    def test_change_cluster_credentials(self):
+        self.log.info('starting test_change_cluster_credentials')
+        manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+        selected_host = self.get_cluster_hosts_ip()[0]
+        mgr_cluster = manager_tool.get_cluster(cluster_name=self.CLUSTER_NAME) \
+            or manager_tool.add_cluster(name=self.CLUSTER_NAME, host=selected_host,
+                                        auth_token=self.monitors.mgmt_auth_token)
+
+        self.log.debug("Checking status before starting")
+        self.log.debug(str(mgr_cluster.get_hosts_health()))
+        try:
+            for node in self.db_cluster.nodes:
+                node.patch_scylla_yaml(**{"authenticator": "PasswordAuthenticator"})
+                node.restart_scylla()
+            mgr_cluster.sctool.run(cmd=f" cluster -c {mgr_cluster.id} update --username cassandra --password cassandra",
+                                   parse_table_res=False)
+            time.sleep(90)  # Waiting for the healthcheck to run again
+            host_health_dict = mgr_cluster.get_hosts_health()
+        finally:  # Setting the cluster to the original authenticator settings
+            for node in self.db_cluster.nodes:
+                node.patch_scylla_yaml(**{"authenticator": None})
+                node.restart_scylla()
+                node.patch_manager_agent_yaml(**{"database": None})
+        self.log.debug("Comparing the node's health to the expected health")
+        for node_ip, host_health in host_health_dict.items():
+            self.assertTrue(host_health.status == HostStatus.UP,
+                            f"Node {node_ip} is marked as {host_health.status} instead of 'UP'")
 
     @staticmethod
     def _keyspace_value_in_progress_table(repair_task, repair_progress_table, keyspace_name):

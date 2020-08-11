@@ -3,7 +3,7 @@ from time import sleep
 
 from sdcm.tester import ClusterTester
 from sdcm.mgmt import get_scylla_manager_tool, TaskStatus, update_config_file
-from mgmt_cli_test import BackupFunctionsMixIn
+from mgmt_cli_test import BackupFunctionsMixIn, duration_to_timedelta
 
 
 LOGGER = logging.getLogger(__name__)
@@ -45,20 +45,19 @@ class ManagerUpgradeTest(BackupFunctionsMixIn, ClusterTester):
         manager_tool.add_cluster(name="cluster_under_test", db_cluster=self.db_cluster,
                                  auth_token=self.monitors.mgmt_auth_token)
         current_manager_version = manager_tool.version
+        mgr_cluster, pre_upgrade_manager_version = self._create_and_add_cluster()
+
+        bucket_name = self.params.get('backup_bucket_location').split()[0]
+        location_list = [f's3:{bucket_name}']
 
         LOGGER.debug("Generating load")
         self.generate_load_and_wait_for_results()
 
-        mgr_cluster = manager_tool.get_cluster(cluster_name="cluster_under_test")
-
         with self.subTest("Creating reoccurring backup and repair tasks"):
-
             repair_task = mgr_cluster.create_repair_task(interval="1d")
             repair_task_current_details = wait_until_task_finishes_return_details(repair_task)
 
             self.update_all_agent_config_files()
-            bucket_name = self.params.get('backup_bucket_location').split()[0]
-            location_list = [f's3:{bucket_name}']
             backup_task = mgr_cluster.create_backup_task(interval="1d", location_list=location_list,
                                                          keyspace_list=["keyspace1"])
             backup_task_current_details = wait_until_task_finishes_return_details(backup_task)
@@ -77,13 +76,24 @@ class ManagerUpgradeTest(BackupFunctionsMixIn, ClusterTester):
             self.create_simple_table(table_name="cf2")
             self.write_multiple_rows(table_name="cf2", key_range=(1, 11))
 
-            bucket_name = self.params.get('backup_bucket_location').split()[0]
-            location_list = [f's3:{bucket_name}']
             rerunning_backup_task = mgr_cluster.create_backup_task(location_list=location_list, keyspace_list=["ks1"],
                                                                    retention=2)
             rerunning_backup_task.wait_and_get_final_status(timeout=300, step=20)
             assert rerunning_backup_task.status == TaskStatus.DONE, \
                 f"Unknown failure in task {rerunning_backup_task.id}"
+
+        with self.subTest("Creating a backup of multiple small tables"):
+            for num in range(2000):
+                self.create_simple_table(table_name=f"small_table_{num}", keyspace_name="SmallTables")
+                self.write_multiple_rows(table_name=f"small_table_{num}", keyspace_name="SmallTables", key_range=(1, 6))
+
+            small_tables_backup_duration = None
+            small_tables_backup = mgr_cluster.create_backup_task(location_list=location_list,
+                                                                 keyspace_list=["SmallTables"])
+            small_tables_backup.wait_and_get_final_status(timeout=600, step=10)
+            assert small_tables_backup.status == TaskStatus.DONE, \
+                f"Unknown failure in task {small_tables_backup.id}"
+            small_tables_backup_duration = duration_to_timedelta(small_tables_backup.duration)
 
         upgrade_scylla_manager(pre_upgrade_manager_version=current_manager_version,
                                target_upgrade_server_version=target_upgrade_server_version,
@@ -92,7 +102,8 @@ class ManagerUpgradeTest(BackupFunctionsMixIn, ClusterTester):
                                db_cluster=self.db_cluster)
 
         LOGGER.debug("Checking that the previously created tasks' details have not changed")
-        manager_tool = get_scylla_manager_tool(manager_node=manager_node)
+        manager_tool = get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+        post_upgrade_manager_version = manager_tool.version
         # make sure that the cluster is still added to the manager
         manager_tool.get_cluster(cluster_name="cluster_under_test")
         validate_previous_task_details(task=repair_task, previous_task_details=repair_task_current_details)
@@ -132,6 +143,23 @@ class ManagerUpgradeTest(BackupFunctionsMixIn, ClusterTester):
                 # making sure that the files of the missing table isn't in s3
                 assert "cf1" not in per_node_backup_file_paths[node_id]["ks1"], \
                     "The missing table is still in s3, even though it should have been purged"
+
+        with self.subTest("Rerunning a backup of multiple small tables, expecting a shorter run time"):
+            if not small_tables_backup_duration:
+                LOGGER.debug("Previous backup did not end successfully, skipping this stage")
+            else:
+                post_upgrade_small_tables_backup = mgr_cluster.create_backup_task(location_list=location_list,
+                                                                                  keyspace_list=["SmallTables"])
+                post_upgrade_small_tables_backup.wait_and_get_final_status(timeout=600, step=10)
+                assert post_upgrade_small_tables_backup.status == TaskStatus.DONE, \
+                    f"Unknown failure in task {post_upgrade_small_tables_backup.id}"
+                post_upgrade_small_tables_backup_duration = duration_to_timedelta(
+                    post_upgrade_small_tables_backup.duration)
+                assert post_upgrade_small_tables_backup_duration/small_tables_backup_duration < 0.8, \
+                    f"Backing up multiple small tables on manager version {post_upgrade_manager_version} took longer " \
+                    f"than expected when compared to the same backup running with {pre_upgrade_manager_version}\n" \
+                    f"\tBackup duration with {pre_upgrade_manager_version}: {small_tables_backup_duration}\n\tBackup " \
+                    f"duration with {post_upgrade_manager_version}: {post_upgrade_small_tables_backup_duration}"
 
     def update_all_agent_config_files(self):
         config_file = '/etc/scylla-manager-agent/scylla-manager-agent.yaml'

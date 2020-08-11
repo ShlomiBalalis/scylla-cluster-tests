@@ -38,7 +38,7 @@ from paramiko.ssh_exception import NoValidConnectionsError
 
 from sdcm.collectd import ScyllaCollectdSetup
 from sdcm.prometheus import start_metrics_server, PrometheusAlertManagerListener
-from sdcm.mgmt import ScyllaManagerError, get_scylla_manager_tool, update_config_file
+from sdcm.mgmt import ScyllaManagerError, update_config_file
 from sdcm.log import SDCMAdapter
 from sdcm.remote import RemoteCmdRunner, LOCALRUNNER, NETWORK_EXCEPTIONS
 from sdcm import wait
@@ -1883,6 +1883,51 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
                 self.remoter.run('sudo supervisorctl start scylla-manager-agent')
             else:
                 self.remoter.run("sudo systemctl start scylla-manager-agent")
+
+    def patch_manager_agent_yaml(self, yaml_file="/etc/scylla-manager-agent/scylla-manager-agent.yaml",
+                                 restart_agent=True, **kwargs):
+        yaml_dst_path = os.path.join(tempfile.mkdtemp(prefix='SCT-test'), 'scylla-manager-agent.yaml')
+        wait.wait_for(self.remoter.receive_files, step=10, text='Waiting for copying scylla.yaml',
+                      timeout=300, throw_exc=True, src=yaml_file, dst=yaml_dst_path)
+        with open(file=yaml_dst_path, mode='r') as agent_yaml_file:
+            agent_yml = yaml.safe_load(agent_yaml_file)
+
+        for key, value in kwargs.items():
+            if value is None:
+                agent_yml.pop(key, None)
+            elif isinstance(value, dict):
+                if not agent_yml.get(key, None):
+                    agent_yml[key] = dict()
+                agent_yml[key].update(value)
+            else:
+                agent_yml[key] = value
+
+        agent_yaml_contents = yaml.safe_dump(agent_yml)
+        with open(yaml_dst_path, 'w') as agent_yaml_file:
+            agent_yaml_file.write(agent_yaml_contents)
+        self.log.debug("Scylla Manager Agent YAML configuration:\n%s", agent_yaml_contents)
+        wait.wait_for(self.remoter.send_files, step=10, text='Waiting for copying scylla-manager-agent.yaml to node',
+                      timeout=300, throw_exc=True, src=yaml_dst_path, dst='/tmp/scylla-manager-agent.yaml')
+        self.remoter.run('sudo mv /tmp/scylla-manager-agent.yaml {}'.format(yaml_file))
+        if restart_agent:
+            self.remoter.run("sudo systemctl restart scylla-manager-agent")
+            self.wait_manager_agent_up()
+
+    def clean_scylla_data(self):
+        """Clean all scylla data file
+
+        Commands are taken from instruction in docs.
+        See https://docs.scylladb.com/operating-scylla/procedures/cluster-management/clear_data/
+        """
+        clean_commands_list = [
+            "sudo rm -rf /var/lib/scylla/data",
+            "sudo find /var/lib/scylla/commitlog -type f -delete",
+            "sudo find /var/lib/scylla/hints -type f -delete",
+            "sudo find /var/lib/scylla/view_hints -type f -delete"
+        ]
+        self.log.debug("Clean all files from scylla data dirs")
+        for cmd in clean_commands_list:
+            self.remoter.run(cmd, ignore_status=True)
 
     def clean_scylla(self):
         """
