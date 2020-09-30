@@ -15,6 +15,8 @@
 
 import os
 import time
+import random
+import re
 from random import randint
 from invoke import exceptions
 
@@ -22,7 +24,9 @@ from sdcm import mgmt
 from sdcm.group_common_events import ignore_no_space_errors
 from sdcm.mgmt import HostStatus, HostSsl, HostRestStatus, TaskStatus, ScyllaManagerError, ScyllaManagerTool
 from sdcm.nemesis import MgmtRepair, DbEventsFilter
+from sdcm.sct_events import InfoEvent
 from sdcm.utils.common import reach_enospc_on_node, clean_enospc_on_node
+from sdcm.utils.decorators import retrying
 from sdcm.tester import ClusterTester
 
 
@@ -118,8 +122,8 @@ class BackupFunctionsMixIn:
 
     def _generate_load(self):
         self.log.info('Starting c-s write workload for 1m')
-        stress_cmd = self.params.get('stress_cmd')
-        stress_thread = self.run_stress_thread(stress_cmd=stress_cmd, duration=5)
+        stress_cmd = self.params.get('prepare_write_cmd')
+        stress_thread = self.run_stress_thread(stress_cmd=stress_cmd, round_robin=self.params.get('round_robin'))
         self.log.info('Sleeping for 15s to let cassandra-stress run...')
         time.sleep(15)
         return stress_thread
@@ -128,6 +132,71 @@ class BackupFunctionsMixIn:
         load_thread = self._generate_load()
         load_results = load_thread.get_results()
         self.log.info(f'load={load_results}')
+
+    def _parse_stress_cmd(self, stress_cmd, params):
+        # Due to an issue with scylla & cassandra-stress - we need to create the counter table manually
+        if 'counter_' in stress_cmd:
+            self._create_counter_table()
+
+        if 'compression' in stress_cmd:
+            if 'keyspace_name' not in params:
+                compression_prefix = re.search('compression=(.*)Compressor', stress_cmd).group(1)
+                keyspace_name = "keyspace_{}".format(compression_prefix.lower())
+                params.update({'keyspace_name': keyspace_name})
+
+        return params
+
+    @staticmethod
+    def _get_keyspace_name(ks_number, keyspace_pref='keyspace'):
+        return '{}{}'.format(keyspace_pref, ks_number)
+
+    def _run_all_stress_cmds(self, stress_queue, params):
+        stress_cmds = params['stress_cmd']
+        if not isinstance(stress_cmds, list):
+            stress_cmds = [stress_cmds]
+        # In some cases we want the same stress_cmd to run several times (can be used with round_robin or not).
+        stress_multiplier = self.params.get('stress_multiplier', default=1)
+        if stress_multiplier > 1:
+            stress_cmds *= stress_multiplier
+
+        for stress_cmd in stress_cmds:
+            params.update({'stress_cmd': stress_cmd})
+            self._parse_stress_cmd(stress_cmd, params)
+
+            # Run all stress commands
+            self.log.debug('stress cmd: {}'.format(stress_cmd))
+            if stress_cmd.startswith('scylla-bench'):
+                stress_queue.append(self.run_stress_thread_bench(stress_cmd=stress_cmd,
+                                                                 stats_aggregate_cmds=False,
+                                                                 round_robin=self.params.get('round_robin')))
+            else:
+                stress_queue.append(self.run_stress_thread(**params))
+
+    def run_prepare_write_cmd(self):
+        # In some cases (like many keyspaces), we want to create the schema (all keyspaces & tables) before the load
+        # starts - due to the heavy load, the schema propogation can take long time and c-s fails.
+        prepare_write_cmd = self.params.get('prepare_write_cmd', default=None)
+        pre_create_schema = self.params.get('pre_create_schema', default=False)
+        keyspace_num = self.params.get('keyspace_num', default=1)
+        write_queue = list()
+
+        # When the load is too heavy for one loader when using MULTI-KEYSPACES, the load is spreaded evenly across
+        # the loaders (round_robin).
+        if keyspace_num > 1 and self.params.get('round_robin'):
+            self.log.debug("Using round_robin for multiple Keyspaces...")
+            for i in range(1, keyspace_num + 1):
+                keyspace_name = self._get_keyspace_name(i)
+                self._run_all_stress_cmds(write_queue, params={'stress_cmd': prepare_write_cmd,
+                                                               'keyspace_name': keyspace_name,
+                                                               'round_robin': True})
+        # Not using round_robin and all keyspaces will run on all loaders
+        else:
+            self._run_all_stress_cmds(write_queue, params={'stress_cmd': prepare_write_cmd,
+                                                           'keyspace_num': keyspace_num,
+                                                           'round_robin': self.params.get('round_robin')})
+
+        for stress in write_queue:
+            self.verify_stress_thread(cs_thread_pool=stress)
 
     def update_config_file(self):
         # FIXME: add to the nodes not in the same region as the bucket the bucket's region
@@ -142,6 +211,26 @@ class BackupFunctionsMixIn:
             self.region = self.params.get('gce_datacenter')
             self.bucket_name = f"gcs:{self.params.get('backup_bucket_location')}"
         self.is_cred_file_configured = True
+
+    def generate_background_read_load(self):
+        self.log.info('Starting c-s read')
+        stress_cmd = self.params.get('stress_read_cmd')
+        stress_thread = self.run_stress_thread(stress_cmd=stress_cmd)
+        self.log.info('Sleeping for 15s to let cassandra-stress run...')
+        time.sleep(15)
+        return stress_thread
+
+
+class NoFilesFoundToDestroy(Exception):
+    pass
+
+
+class NoKeyspaceFound(Exception):
+    pass
+
+
+class FilesNotCorrupted(Exception):
+    pass
 
 
 # pylint: disable=too-many-public-methods
@@ -227,6 +316,23 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
             self.test_mgmt_cluster_healthcheck()
         with self.subTest('STEP 5: Client Encryption'):
             self.test_client_encryption()
+
+    def test_repair_intensity_feature(self):
+        InfoEvent(message="Starting C-S write load")
+        self.run_prepare_write_cmd()
+        InfoEvent(message="Flushing")
+        for node in self.db_cluster.nodes:
+            node.run_nodetool("flush")
+        InfoEvent(message="Waiting for compactions to end")
+        self.wait_no_compactions_running(n=30, sleep_time=30)
+        InfoEvent(message="Starting C-S read load")
+        stress_read_thread = self.generate_background_read_load()
+        time.sleep(600)  # So we will see the base load of the cluster
+        InfoEvent(message="Sleep ended - Starting tests")
+        with self.subTest('STEP 1: test_intensity_and_parallel'):
+            self.test_intensity_and_parallel()
+        load_results = stress_read_thread.get_results()
+        self.log.info(f'load={load_results}')
 
     def get_email_data(self):
         self.log.info("Prepare data for email")
@@ -537,3 +643,57 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
             finally:
                 if has_enospc_been_reached:
                     clean_enospc_on_node(target_node=target_node, sleep_time=30)
+
+    def _delete_keyspace_directory(self, db_node, keyspace_name):
+        # Stop scylla service before deleting sstables to avoid partial deletion of files that are under compaction
+        db_node.stop_scylla_server(verify_up=False, verify_down=True)
+
+        try:
+            directoy_path = f"/var/lib/scylla/data/{keyspace_name}"
+            directory_size_result = db_node.remoter.sudo(f"du -h --max-depth=0 {directoy_path}")
+            result = db_node.remoter.sudo(f'rm -rf {directoy_path}')
+            if result.stderr:
+                raise FilesNotCorrupted('Files were not corrupted. CorruptThenRepair nemesis can\'t be run. '
+                                        'Error: {}'.format(result))
+            if directory_size_result.stdout:
+                directory_size = directory_size_result.stdout[:directory_size_result.stdout.find("\t")]
+                self.log.debug(f"Removed the directory of keyspace {keyspace_name} from node "
+                               f"{db_node}\nThe size of the directory is {directory_size}")
+
+        finally:
+            db_node.start_scylla_server(verify_up=True, verify_down=False)
+
+    def test_intensity_and_parallel(self):
+        InfoEvent(message='starting test_intensity_and_parallel')
+        if not self.is_cred_file_configured:
+            self.update_config_file()
+        manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+        mgr_cluster = manager_tool.add_cluster(name=self.CLUSTER_NAME + '_intensity_and_parallel', db_cluster=self.db_cluster,
+                                               auth_token=self.monitors.mgmt_auth_token)
+        target_node = self.db_cluster.nodes[2]
+
+        self._delete_keyspace_directory(db_node=target_node, keyspace_name="keyspace1")
+        InfoEvent(message="Starting a repair with no intensity")
+        base_repair_task = mgr_cluster.create_repair_task(keyspace="keyspace1")
+        base_repair_task.wait_and_get_final_status(step=30, timeout=12000)
+        assert base_repair_task.status == TaskStatus.DONE, "The base repair task did not end in the expected time"
+        InfoEvent(message=f"The base repair, with no intensity argument, took {str(base_repair_task.duration)}")
+
+        arg_list = [{"intensity": .5},
+                    {"intensity": .25},
+                    {"intensity": .0001},
+                    {"intensity": 2},
+                    {"intensity": 4},
+                    {"parallel": 1},
+                    {"parallel": 2},
+                    {"intensity": 2, "parallel": 1},
+                    {"intensity": 100},
+                    {"intensity": 0}]
+
+        for arg_dict in arg_list:
+            self._delete_keyspace_directory(db_node=target_node, keyspace_name="keyspace1")
+            InfoEvent(message=f"Starting a repair with {arg_dict}")
+            repair_task = mgr_cluster.create_repair_task(**arg_dict, keyspace="keyspace1")
+            repair_task.wait_and_get_final_status(step=30, timeout=16000)
+            InfoEvent(message=f"repair with {arg_dict} took {str(repair_task.duration)}")
+        InfoEvent(message='finishing test_intensity_and_parallel')
