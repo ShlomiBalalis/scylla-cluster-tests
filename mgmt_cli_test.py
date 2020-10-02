@@ -663,21 +663,54 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         finally:
             db_node.start_scylla_server(verify_up=True, verify_down=False)
 
+    def _insert_data_exlude_each_node(self, total_num_of_rows, keyspace_name="keyspace2"):
+        num_of_nodes = self.params.get("n_db_nodes")
+        num_of_rows_per_insertion = int(total_num_of_rows / num_of_nodes)
+        stress_command_template = "cassandra-stress write cl=QUORUM n={} -schema 'keyspace={} replication(factor=3)'" \
+                                  " -col 'size=FIXED(1024) n=FIXED(1)' -pop seq={}..{} -port jmx=6868 -mode cql3" \
+                                  " native -rate threads=200 -log interval=5"
+        start_of_range = 1
+        for node in self.db_cluster.nodes[1:]:
+            InfoEvent(message=f"inserting {num_of_rows_per_insertion} rows to every node except {node.name}")
+            end_of_range = start_of_range + num_of_rows_per_insertion - 1
+            node.stop_scylla_server(verify_up=False, verify_down=True)
+            stress_thread = self.run_stress_thread(stress_cmd=stress_command_template.format(num_of_rows_per_insertion,
+                                                                                             keyspace_name,
+                                                                                             start_of_range,
+                                                                                             end_of_range))
+            time.sleep(15)
+            self.log.info(f'load={stress_thread.get_results()}')
+            node.start_scylla_server(verify_up=True, verify_down=False)
+            start_of_range = end_of_range + 1
+        with self.db_cluster.cql_connection_patient(self.db_cluster.nodes[0]) as session:
+            session.execute(f"ALTER TABLE {keyspace_name}.standard1 WITH read_repair_chance = 0.0")
+
+        for node in self.db_cluster.nodes:
+            node.run_nodetool("flush")
+
     def test_intensity_and_parallel(self):
+        keyspace_to_be_repaired = "keyspace2"
         InfoEvent(message='starting test_intensity_and_parallel')
         if not self.is_cred_file_configured:
             self.update_config_file()
         manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
         mgr_cluster = manager_tool.add_cluster(name=self.CLUSTER_NAME + '_intensity_and_parallel', db_cluster=self.db_cluster,
                                                auth_token=self.monitors.mgmt_auth_token)
-        target_node = self.db_cluster.nodes[2]
+        # target_node = self.db_cluster.nodes[2]
 
-        self._delete_keyspace_directory(db_node=target_node, keyspace_name="keyspace1")
+        # self._delete_keyspace_directory(db_node=target_node, keyspace_name="keyspace1")
+
+        InfoEvent(message="Starting faulty load (to be repaired)")
+        self._insert_data_exlude_each_node(total_num_of_rows=29296872, keyspace_name=keyspace_to_be_repaired)
+
         InfoEvent(message="Starting a repair with no intensity")
-        base_repair_task = mgr_cluster.create_repair_task(keyspace="keyspace1")
+        base_repair_task = mgr_cluster.create_repair_task(keyspace="keyspace*")
         base_repair_task.wait_and_get_final_status(step=30)
         assert base_repair_task.status == TaskStatus.DONE, "The base repair task did not end in the expected time"
         InfoEvent(message=f"The base repair, with no intensity argument, took {str(base_repair_task.duration)}")
+
+        with self.db_cluster.cql_connection_patient(self.db_cluster.nodes[0]) as session:
+            session.execute(f"DROP KEYSPACE {keyspace_to_be_repaired}")
 
         arg_list = [{"intensity": .5},
                     {"intensity": .25},
@@ -686,14 +719,20 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
                     {"intensity": 4},
                     {"parallel": 1},
                     {"parallel": 2},
+                    {"parallel": 3},
                     {"intensity": 2, "parallel": 1},
                     {"intensity": 100},
                     {"intensity": 0}]
 
         for arg_dict in arg_list:
-            # self._delete_keyspace_directory(db_node=target_node, keyspace_name="keyspace1")
+            InfoEvent(message="Starting faulty load (to be repaired)")
+            self._insert_data_exlude_each_node(total_num_of_rows=29296872, keyspace_name=keyspace_to_be_repaired)
+
             InfoEvent(message=f"Starting a repair with {arg_dict}")
-            repair_task = mgr_cluster.create_repair_task(**arg_dict, keyspace="keyspace1")
+            repair_task = mgr_cluster.create_repair_task(**arg_dict, keyspace="keyspace*")
             repair_task.wait_and_get_final_status(step=30)
             InfoEvent(message=f"repair with {arg_dict} took {str(repair_task.duration)}")
+
+            with self.db_cluster.cql_connection_patient(self.db_cluster.nodes[0]) as session:
+                session.execute(f"DROP KEYSPACE {keyspace_to_be_repaired}")
         InfoEvent(message='finishing test_intensity_and_parallel')
