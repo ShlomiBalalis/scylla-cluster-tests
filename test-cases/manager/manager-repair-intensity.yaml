@@ -1,4 +1,4 @@
-test_duration: 960
+test_duration: 1200
 
 prepare_write_cmd: [
     "cassandra-stress write cl=QUORUM n=73242192 -schema 'replication(factor=3)' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=1..73242192 -port jmx=6868 -mode cql3 native -rate threads=200 -log interval=5",
@@ -6,7 +6,7 @@ prepare_write_cmd: [
     "cassandra-stress write cl=QUORUM n=73242192 -schema 'replication(factor=3)' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=146484385..219726576 -port jmx=6868 -mode cql3 native -rate threads=200 -log interval=5",
     "cassandra-stress write cl=QUORUM n=73242192 -schema 'replication(factor=3)' -col 'size=FIXED(1024) n=FIXED(1)' -pop seq=219726577..292968768 -port jmx=6868 -mode cql3 native -rate threads=200 -log interval=5",
 ]
-stress_read_cmd: "cassandra-stress read cl=QUORUM duration=210m -schema 'replication(factor=3)' -col 'size=FIXED(1024) n=FIXED(1)' -port jmx=6868 -mode cql3 native -rate threads=125 throttle=33000/s -log interval=5"
+stress_read_cmd: "cassandra-stress read cl=QUORUM duration=1020m -schema 'replication(factor=3)' -col 'size=FIXED(1024) n=FIXED(1)' -port jmx=6868 -mode cql3 native -rate threads=125 throttle=33000/s -log interval=5"
 round_robin: true
 
 hinted_handoff: 'disabled'

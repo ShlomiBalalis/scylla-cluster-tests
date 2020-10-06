@@ -665,13 +665,13 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
 
     def _insert_data_exlude_each_node(self, total_num_of_rows, keyspace_name="keyspace2"):
         num_of_nodes = self.params.get("n_db_nodes")
-        num_of_rows_per_insertion = int(total_num_of_rows / num_of_nodes)
+        num_of_rows_per_insertion = int(total_num_of_rows / (num_of_nodes - 1))
         stress_command_template = "cassandra-stress write cl=QUORUM n={} -schema 'keyspace={} replication(factor=3)'" \
                                   " -col 'size=FIXED(1024) n=FIXED(1)' -pop seq={}..{} -port jmx=6868 -mode cql3" \
                                   " native -rate threads=200 -log interval=5"
         start_of_range = 1
         for node in self.db_cluster.nodes[1:]:
-            InfoEvent(message=f"inserting {num_of_rows_per_insertion} rows to every node except {node.name}")
+            self.log.info(f"inserting {num_of_rows_per_insertion} rows to every node except {node.name}")
             end_of_range = start_of_range + num_of_rows_per_insertion - 1
             node.stop_scylla_server(verify_up=False, verify_down=True)
             stress_thread = self.run_stress_thread(stress_cmd=stress_command_template.format(num_of_rows_per_insertion,
@@ -702,6 +702,7 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
 
         InfoEvent(message="Starting faulty load (to be repaired)")
         self._insert_data_exlude_each_node(total_num_of_rows=29296872, keyspace_name=keyspace_to_be_repaired)
+        self.wait_no_compactions_running(n=40, sleep_time=10)
 
         InfoEvent(message="Starting a repair with no intensity")
         base_repair_task = mgr_cluster.create_repair_task(keyspace="keyspace*")
@@ -727,6 +728,7 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         for arg_dict in arg_list:
             InfoEvent(message="Starting faulty load (to be repaired)")
             self._insert_data_exlude_each_node(total_num_of_rows=29296872, keyspace_name=keyspace_to_be_repaired)
+            self.wait_no_compactions_running(n=40, sleep_time=10)
 
             InfoEvent(message=f"Starting a repair with {arg_dict}")
             repair_task = mgr_cluster.create_repair_task(**arg_dict, keyspace="keyspace*")
