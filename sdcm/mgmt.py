@@ -974,6 +974,11 @@ class ScyllaManagerTool(ScyllaManagerBase):
             manager_cluster.delete_automatic_repair_task()
         return manager_cluster
 
+    def remove_cluster(self, name):
+        res_cluster_remove = self.sctool.run(f"cluster delete -c {name}", parse_table_res=False,
+                                             replace_broken_unicode_values=False)
+        assert res_cluster_remove.exited == 0, f"cluster removal of {name} failed!"
+
     def upgrade(self, scylla_mgmt_upgrade_to_repo):
         manager_from_version = self.version
         LOGGER.debug('Running Manager upgrade from: {} to version in repo: {}'.format(
