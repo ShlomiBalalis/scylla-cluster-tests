@@ -4909,11 +4909,11 @@ class BaseMonitorSet():  # pylint: disable=too-many-public-methods,too-many-inst
                           f"{self.monitoring_conf_dir}/scylla_manager_servers.yml")
 
     def start_scylla_monitoring(self, node):
-        self._create_manager_prometheus_yaml(node=node)
+        # self._create_manager_prometheus_yaml(node=node)
         labels = " ".join(f"--label {key}={value}" for key, value in node.tags.items())
-        scylla_manager_servers_arg = ""
-        if self.params.get("use_mgmt"):
-            scylla_manager_servers_arg = f'-N `realpath "{self.monitoring_conf_dir}/scylla_manager_servers.yml"` \\'
+        # scylla_manager_servers_arg = ""
+        # if self.params.get("use_mgmt"):
+        #     scylla_manager_servers_arg = f'-N `realpath "{self.monitoring_conf_dir}/scylla_manager_servers.yml"` \\'
         run_script = dedent(f"""
             cd -P {self.monitor_install_path}
             mkdir -p {self.monitoring_data_dir}
@@ -4921,8 +4921,7 @@ class BaseMonitorSet():  # pylint: disable=too-many-public-methods,too-many-inst
             -D "{labels}" \
             -s `realpath "{self.monitoring_conf_dir}/scylla_servers.yml"` \
             -n `realpath "{self.monitoring_conf_dir}/node_exporter_servers.yml"` \
-            {scylla_manager_servers_arg}
-            -d `realpath "{self.monitoring_data_dir}"` -l -v master,{self.monitoring_version} -b "-web.enable-admin-api"
+            -d `realpath "{self.monitoring_data_dir}"` -L 127.0.0.1 -v master,{self.monitoring_version} -b "-web.enable-admin-api"
         """)
         node.remoter.run("bash -ce '%s'" % run_script, verbose=True)
         self.add_sct_dashboards_to_grafana(node)
