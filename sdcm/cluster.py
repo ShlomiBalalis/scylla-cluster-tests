@@ -4869,7 +4869,7 @@ class BaseMonitorSet():  # pylint: disable=too-many-public-methods,too-many-inst
               message="Waiting for reconfiguring scylla monitoring")
     def reconfigure_scylla_monitoring(self):
         for node in self.nodes:
-            monitoring_targets = " ".join(f"[{n.ip_address}]:9180" for n in self.targets["db_cluster"].nodes)
+            monitoring_targets = " ".join(f"{n.ip_address}:9180" for n in self.targets["db_cluster"].nodes)
             node.remoter.sudo(shell_script_cmd(f"""\
                 cd {self.monitor_install_path}
                 mkdir -p {self.monitoring_conf_dir}
