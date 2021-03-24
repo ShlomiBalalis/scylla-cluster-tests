@@ -125,7 +125,7 @@ class BackupFunctionsMixIn:
     def _generate_load(self):
         self.log.info('Starting c-s write workload for 1m')
         stress_cmd = self.params.get('stress_cmd')
-        stress_thread = self.run_stress_thread(stress_cmd=stress_cmd, duration=5)
+        stress_thread = self.run_stress_thread(stress_cmd=stress_cmd, round_robin=self.params.get('round_robin'))
         self.log.info('Sleeping for 15s to let cassandra-stress run...')
         time.sleep(15)
         return stress_thread
@@ -384,6 +384,24 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
             repair_task.wait_for_percentage(next_percentage_block)
         repair_task.wait_and_get_final_status(step=30)
         InfoEvent(message="Repair ended")
+
+    def test_large_backup(self):
+        if not self.is_cred_file_configured:
+            self.update_config_file()
+        InfoEvent(message="Starting C-S write load").publish()
+        self.run_prepare_write_cmd()
+        InfoEvent(message="Flushing").publish()
+        for node in self.db_cluster.nodes:
+            node.run_nodetool("flush")
+        InfoEvent(message="Waiting for compactions to end").publish()
+        self.wait_no_compactions_running(n=90, sleep_time=30)
+        manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+        mgr_cluster = manager_tool.add_cluster(name=self.CLUSTER_NAME,
+                                               db_cluster=self.db_cluster,
+                                               auth_token=self.monitors.mgmt_auth_token)
+        location_list = [self.bucket_name, ]
+        backup_task = mgr_cluster.create_backup_task(location_list=location_list)
+        backup_task.wait_for_status(list_status=[TaskStatus.DONE], timeout=36000)
 
     def _repair_intensity_feature(self, fault_multiple_nodes):
         InfoEvent(message="Starting C-S write load").publish()

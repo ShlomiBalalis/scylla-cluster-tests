@@ -1,0 +1,26 @@
+test_duration: 2000
+
+prepare_write_cmd: ["cassandra-stress write cl=QUORUM n=550100150 -schema 'replication(factor=3)' -port jmx=6868 -mode cql3 native -rate threads=250 -col 'size=FIXED(200) n=FIXED(5)' -pop seq=1..550100150",
+                    "cassandra-stress write cl=QUORUM n=550100150 -schema 'replication(factor=3)' -port jmx=6868 -mode cql3 native -rate threads=250 -col 'size=FIXED(200) n=FIXED(5)' -pop seq=550100151..1100200300"]
+
+round_robin: true
+
+instance_type_db: 'i3.4xlarge'
+instance_type_loader: 'c5.xlarge'
+
+region_name: 'us-east-1'
+n_db_nodes: 6
+n_loaders: 2
+n_monitor_nodes: 1
+
+post_behavior_db_nodes: "destroy"
+post_behavior_loader_nodes: "destroy"
+post_behavior_monitor_nodes: "destroy"
+
+user_prefix: manager-large-backup
+space_node_threshold: 6442
+ip_ssh_connections: 'public'
+
+use_mgmt: true
+
+aws_instance_profile_name: 'qa-scylla-manager-backup-instance-profile'
