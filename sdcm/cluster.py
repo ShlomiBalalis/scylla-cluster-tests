@@ -30,6 +30,7 @@ import uuid
 import itertools
 import json
 import ipaddress
+import anyconfig
 
 from collections import defaultdict
 from sdcm.sct_events import Severity
@@ -124,6 +125,38 @@ def set_duration(duration):
 def remove_if_exists(file_path):
     if os.path.exists(file_path):
         os.remove(file_path)
+
+
+def get_manager_repo(manager_branch_name, distro):
+    manager_versions = anyconfig.load("../defaults/manager_default.yaml")["manager_versions"]
+
+    distro_dict = {Distro.CENTOS7: "centos7", Distro.DEBIAN9: "debian9", Distro.DEBIAN10: "debian10",
+                   Distro.UBUNTU16: "ubuntu16", Distro.UBUNTU18: "ubuntu18", Distro.UBUNTU20: "ubuntu20"}
+
+    distro_name = distro_dict.get(distro, None)
+
+    branch_specific_repos = manager_versions.get(manager_branch_name, None)
+    if not branch_specific_repos:
+        raise AssertionError(f"Could not find manager branch {manager_branch_name} in manager defaults")
+
+    repo_address = branch_specific_repos.get(distro_name, None)
+    if not repo_address:
+        raise AssertionError(f"Could not find manager repo for distro {distro_name} in branch {manager_branch_name}")
+
+    return repo_address
+
+
+def get_manager_scylla_backend(distro):
+    manager_backend = anyconfig.load("../defaults/manager_default.yaml")["manager_scylla_backend"]
+
+    distro_dict = {Distro.CENTOS7: "centos7", Distro.DEBIAN9: "debian9", Distro.DEBIAN10: "debian10",
+                   Distro.UBUNTU16: "ubuntu16", Distro.UBUNTU18: "ubuntu18", Distro.UBUNTU20: "ubuntu20"}
+
+    distro_name = distro_dict.get(distro, None)
+
+    backend_repo_address = manager_backend.get(distro_name, None)
+    if not backend_repo_address:
+        raise AssertionError(f"Could not find manager scylla backend repo for {distro}")
 
 
 class Setup:
@@ -4827,12 +4860,15 @@ class BaseMonitorSet():  # pylint: disable=too-many-public-methods,too-many-inst
 
     def install_scylla_manager(self, node, auth_token):
         if self.params.get('use_mgmt'):
-            node.install_scylla(scylla_repo=self.params.get('scylla_repo_m'))
+            # node.install_scylla(scylla_repo=self.params.get('scylla_repo_m'))
+            node.install_scylla(scylla_repo=get_manager_scylla_backend(distro=node.distro))
             package_path = self.params.get('scylla_mgmt_pkg')
             if package_path:
                 node.remoter.run('mkdir -p {}'.format(package_path))
                 node.remoter.send_files(src='{}*.rpm'.format(package_path), dst=package_path)
-            node.install_mgmt(scylla_mgmt_repo=self.params.get('scylla_mgmt_repo'), auth_token=auth_token,
+            manager_repo = self.params.get('scylla_mgmt_repo') or \
+                get_manager_repo(manager_branch_name=self.params.get('manager_branch'), distro=node.distro)
+            node.install_mgmt(scylla_mgmt_repo=manager_repo, auth_token=auth_token,
                               package_url=package_path)
             self.nodes[0].wait_manager_server_up()
 
