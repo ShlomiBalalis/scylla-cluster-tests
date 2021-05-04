@@ -5,6 +5,7 @@ n_loaders: 1
 n_monitor_nodes: 1
 instance_type_db: 'i3.large'
 
+use_mgmt: false
 user_prefix: 'gemini-with-nemesis-3h-normal'
 
 nemesis_class_name: 'GeminiChaosMonkey'
