@@ -3680,7 +3680,8 @@ class BaseScyllaCluster:  # pylint: disable=too-many-public-methods, too-many-in
             elif node.distro.is_ubuntu:
                 check_package_suites_distro(node, 'deb')
                 node.remoter.run('apt list --installed | grep scylla')
-                node.remoter.sudo('apt install ./scylla*', ignore_status=False, verbose=True)
+                node.remoter.sudo('yes Y | sudo dpkg --force-depends -i /tmp/scylla/scylla*',
+                                  ignore_status=False, verbose=True)
                 node.remoter.run('apt list --installed | grep scylla')
             _queue.put(node)
             _queue.task_done()
