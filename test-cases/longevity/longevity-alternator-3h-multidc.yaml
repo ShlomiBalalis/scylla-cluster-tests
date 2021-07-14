@@ -48,3 +48,4 @@ alternator_use_dns_routing: true
 
 ip_ssh_connections: 'public'
 intra_node_comm_public: true
+use_mgmt: false
