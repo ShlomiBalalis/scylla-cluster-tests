@@ -443,10 +443,22 @@ class AWSCluster(cluster.BaseCluster):  # pylint: disable=too-many-instance-attr
         """)
     # pylint: disable=too-many-arguments
 
+    @staticmethod
+    def installing_ifconfig():
+        return dedent(r"""
+            if `grep -qi "ubuntu" /etc/os-release`; then
+
+                sudo apt update
+                sudo apt install net-tools
+
+            fi
+        """)
+
     def add_nodes(self, count, ec2_user_data='', dc_idx=0, rack=0, enable_auto_bootstrap=False):
         post_boot_script = self.test_config.get_startup_script()
         if self.extra_network_interface:
             post_boot_script += self.configure_eth1_script()
+            post_boot_script += self.installing_ifconfig()
 
         if self.params.get('ip_ssh_connections') == 'ipv6':
             post_boot_script += self.network_config_ipv6_workaround_script()
