@@ -2379,11 +2379,17 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         wait_time = random.choice(list_of_timeout_options)
         self.log.debug("Taking down eth1 for %dsec", wait_time)
 
+        if self.target_node.distro.is_rhel_like:
+            shutdown_interface_command = "/sbin/ifdown {}"
+            startup_interface_command = "/sbin/ifup {}"
+        else:
+            shutdown_interface_command = "ifconfig {} down"
+            startup_interface_command = "ifconfig {} up"
         try:
-            self.target_node.remoter.run("sudo /sbin/ifdown eth1")
+            self.target_node.remoter.sudo(shutdown_interface_command.format("eth1"))
             time.sleep(wait_time)
         finally:
-            self.target_node.remoter.run("sudo /sbin/ifup eth1")
+            self.target_node.remoter.sudo(startup_interface_command.format("eth1"))
             self._wait_all_nodes_un()
 
     def break_streaming_task_and_rebuild(self, task='decommission'):  # pylint: disable=too-many-statements
