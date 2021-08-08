@@ -380,9 +380,6 @@ class AWSCluster(cluster.BaseCluster):  # pylint: disable=too-many-instance-attr
                   version: 2
                   renderer: networkd
                   ethernets:
-                    eth0:
-                      dhcp4: yes
-                      dhcp6: yes
                     eth1:
                       addresses:
                        - ${ETH1_IP_ADDRESS}${ETH1_SUBNET}
