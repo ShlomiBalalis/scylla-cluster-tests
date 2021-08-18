@@ -2383,8 +2383,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             shutdown_interface_command = "/sbin/ifdown {}"
             startup_interface_command = "/sbin/ifup {}"
         else:
-            shutdown_interface_command = "ifconfig {} down"
-            startup_interface_command = "ifconfig {} up"
+            shutdown_interface_command = "ip link set {} down"
+            startup_interface_command = "ip link set {} up"
         try:
             self.target_node.remoter.sudo(shutdown_interface_command.format("eth1"))
             time.sleep(wait_time)

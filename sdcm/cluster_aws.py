@@ -372,11 +372,9 @@ class AWSCluster(cluster.BaseCluster):  # pylint: disable=too-many-instance-attr
     def configure_eth1_script():
         return dedent(r"""
             if `grep -qi "ubuntu" /etc/os-release`; then
-
                 ETH1_IP_ADDRESS=`ip route show | grep eth1 | grep -oPm1 'src \K[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*'`
                 ETH1_CIDR_BLOCK=`ip route show | grep eth1 | grep -oPm1 '\K[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*/[0-9]*'`
                 ETH1_SUBNET=`echo ${ETH1_CIDR_BLOCK} | grep -oP '\\K/\\d+'`
-
                 sudo bash -c "echo '
                 network:
                   version: 2
@@ -401,11 +399,8 @@ class AWSCluster(cluster.BaseCluster):  # pylint: disable=too-many-instance-attr
                         - from: ${ETH1_IP_ADDRESS}/32
                           table: 2
                 ' > /etc/netplan/51-eth1.yaml"
-
                 netplan --debug apply
-
             else
-
                 BASE_EC2_NETWORK_URL=http://169.254.169.254/latest/meta-data/network/interfaces/macs/
                 NUMBER_OF_ENI=`curl -s ${BASE_EC2_NETWORK_URL} | wc -w`
                 for mac in `curl -s ${BASE_EC2_NETWORK_URL}`
@@ -438,7 +433,6 @@ class AWSCluster(cluster.BaseCluster):  # pylint: disable=too-many-instance-attr
                 from ${ETH1_IP_ADDRESS}/32 table 2
                 " > /etc/sysconfig/network-scripts/rule-eth1
                 sudo systemctl restart network
-
             fi
         """)
     # pylint: disable=too-many-arguments
@@ -447,10 +441,8 @@ class AWSCluster(cluster.BaseCluster):  # pylint: disable=too-many-instance-attr
     def installing_ifconfig():
         return dedent(r"""
             if `grep -qi "ubuntu" /etc/os-release`; then
-
                 sudo apt update
                 sudo apt install net-tools
-
             fi
         """)
 
