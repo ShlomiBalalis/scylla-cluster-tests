@@ -977,6 +977,16 @@ class SCTConfiguration(dict):
                     be provided by the test suite infrastructure.
                     multiple commands can passed as a list"""),
 
+        dict(name="enterprise_upgrade_stress_cmd", env="SCT_ENTERPRISE_UPGRADE_STRESS_CMD",
+             type=str_or_list,
+             help="""cassandra-stress commands. Used specifically in the rolling upgrade test
+                     when upgrading to and/or from an enterprise version."""),
+
+        dict(name="enterprise_upgrade_append_scylla_yaml", env="SCT_ENTERPRISE_UPGRADE_APPEND_SCYLLA_YAML",
+             type=str,
+             help="""More configuration to append to /etc/scylla/scylla.yaml. Used specifically
+                     in rolling upgrade test when upgrading to and/or from an enterprise version."""),
+
         dict(name="scylla_encryption_options", env="SCT_SCYLLA_ENCRYPTION_OPTIONS", type=str_or_list,
              help="options will be used for enable encryption at-rest for tables"),
 
