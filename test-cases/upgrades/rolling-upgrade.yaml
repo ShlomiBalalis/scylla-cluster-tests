@@ -14,6 +14,27 @@ stress_cmd_complex_verify_read: cassandra-stress user no-warmup profile=/tmp/com
 stress_cmd_complex_verify_more: cassandra-stress user no-warmup profile=/tmp/complex_schema.yaml  ops'(read1=1,read2=1,read3=1,update_static=1,update_ttl=1,update_diff1_ts=1,update_diff2_ts=1,update_same1_ts=1,update_same2_ts=1)' cl=ALL n=5000000 -mode cql3 native -rate threads=200 -pop seq=1..5000000
 stress_cmd_complex_verify_delete: cassandra-stress user no-warmup profile=/tmp/complex_schema.yaml  ops'(delete_row=1)' cl=ALL n=500000 -mode cql3 native -rate threads=200 -pop seq=1..500000
 
+enterprise_upgrade_stress_cmd: "cassandra-stress write cl=QUORUM n=20971520 -schema 'replication(factor=3) keyspace=keyspace1_ics compaction(strategy=IncrementalCompactionStrategy)' -port jmx=6868 -mode cql3 native -rate threads=80 -pop seq=1..20971520 -col 'n=FIXED(10) size=FIXED(512)' -log interval=5"
+enterprise_upgrade_append_scylla_yaml: |
+  system_key_directory: /etc/encrypt_conf/
+  system_info_encryption:
+      enabled: True  # system_info_encryption
+      key_provider: LocalFileSystemKeyProviderFactory  # system_info_encryption
+      secret_key_file: '/etc/scylla/encrypt_conf/system_info_encryption_keyfile'
+
+  kmip_hosts:
+       kmip_test:
+           hosts: 52.21.171.245
+           certificate: /etc/encrypt_conf/hytrust-kmip-scylla.pem
+           keyfile: /etc/encrypt_conf/hytrust-kmip-scylla.pem
+           truststore: /etc/encrypt_conf/hytrust-kmip-cacert.pem
+           priority_string: 'SECURE128:+RSA:-VERS-TLS1.0:-ECDHE-ECDSA'
+
+  audit: "table"
+  audit_categories: "DCL,DDL,AUTH,ADMIN"
+  audit_tables: "keyspace1.standard1,scylla_bench.test"
+  audit_keyspaces: "keyspace1,scylla_bench"
+
 n_db_nodes: 4
 n_loaders: 1
 n_monitor_nodes: 1

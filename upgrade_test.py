@@ -498,6 +498,8 @@ class UpgradeTest(FillDatabaseData):
         """
         # In case the target version >= 3.1 we need to perform test for truncate entries
         target_upgrade_version = self.params.get('target_upgrade_version')
+        base_version = self.params.get('scylla_version')
+        enterprise_upgrade_stress_cmd = self.params.get("enterprise_upgrade_stress_cmd")
         self.truncate_entries_flag = False
         if target_upgrade_version and parse_version(target_upgrade_version) >= parse_version('3.1') and \
                 not is_enterprise(target_upgrade_version):
@@ -532,6 +534,9 @@ class UpgradeTest(FillDatabaseData):
         random.shuffle(indexes)
 
         self.log.info('pre-test - Run stress workload before upgrade')
+        if is_enterprise(base_version):
+            enterprise_stress_thread_pull = self.run_stress_thread(stress_cmd=enterprise_upgrade_stress_cmd)
+            self.verify_stress_thread(enterprise_stress_thread_pull)
         # complex workload: prepare write
         self.log.info('Starting c-s complex workload (5M) to prepare data')
         stress_cmd_complex_prepare = self.params.get('stress_cmd_complex_prepare')
@@ -693,6 +698,10 @@ class UpgradeTest(FillDatabaseData):
         self.log.info('Will check paged query after upgrading all nodes')
         self.paged_query()
         self.log.info('Done checking paged query after upgrading nodes')
+
+        if is_enterprise(target_upgrade_version):
+            enterprise_stress_thread_pull = self.run_stress_thread(stress_cmd=enterprise_upgrade_stress_cmd)
+            self.verify_stress_thread(enterprise_stress_thread_pull)
 
         # After adjusted the workloads, there is a entire write workload, and it uses a fixed duration for catching
         # the data lose.
