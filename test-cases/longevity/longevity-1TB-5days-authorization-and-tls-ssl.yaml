@@ -29,7 +29,7 @@ gce_instance_type_loader: 'c2-standard-16'
 scylla_repo_loader: 'https://s3.amazonaws.com/downloads.scylladb.com/rpm/centos/scylla-4.3.repo'
 
 
-nemesis_class_name: 'ChaosMonkey'
+nemesis_class_name: 'NodeTerminateAndReplace'
 nemesis_interval: 30
 nemesis_filter_seeds: false
 seeds_num: 2
