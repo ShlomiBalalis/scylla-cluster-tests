@@ -52,7 +52,7 @@ def check_nodes_status(nodes_status: dict, current_node, removed_nodes_list=None
             LOGGER.debug("REMOVED NODES LIST = %s", removed_nodes_list)
 
             yield ClusterHealthValidatorEvent.NodeStatus(
-                severity=Severity.ERROR if node_ip in removed_nodes_list else Severity.CRITICAL,
+                severity=Severity.CRITICAL,
                 node=current_node.name,
                 error=f"Current node {current_node.ip_address}. "
                       f"Node with {node_ip}{is_target} status is {node_properties['status']}",
