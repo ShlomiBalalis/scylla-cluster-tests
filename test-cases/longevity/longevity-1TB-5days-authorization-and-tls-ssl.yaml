@@ -32,7 +32,7 @@ scylla_repo_loader: 'https://s3.amazonaws.com/downloads.scylladb.com/rpm/centos/
 nemesis_class_name: 'NodeTerminateAndReplace'
 nemesis_interval: 30
 nemesis_filter_seeds: false
-seeds_num: 2
+seeds_num: 4
 
 user_prefix: 'longevity-tls-1tb-7d'
 space_node_threshold: 644245094
