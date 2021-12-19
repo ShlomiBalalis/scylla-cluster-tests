@@ -16,7 +16,7 @@
 
 # pylint: disable=too-many-lines
 
-from random import randint
+from random import randint, choice
 from pathlib import Path
 from functools import cached_property
 import os
@@ -31,6 +31,7 @@ import libcloud.storage.providers
 from invoke import exceptions
 from pkg_resources import parse_version
 
+from sdcm import wait
 from sdcm import mgmt
 from sdcm.mgmt import ScyllaManagerError, TaskStatus, HostStatus, HostSsl, HostRestStatus
 from sdcm.mgmt.cli import ScyllaManagerTool
@@ -379,6 +380,10 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
                 self.test_healthcheck_change_max_timeout()
         with self.subTest('Basic test suspend and resume'):
             self.test_suspend_and_resume()
+        with self.subTest('test make sure repair is aborted'):
+            self.test_make_sure_repair_is_aborted()
+        with self.subTest('test fail fast'):
+            self.test_fail_fast()
         with self.subTest('Client Encryption'):
             # Since this test activates encryption, it has to be the last test in the sanity
             self.test_client_encryption()
@@ -470,6 +475,14 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
             self.test_backup_rate_limit()
         with self.subTest('Test Backup Purge Removes Orphans Files'):
             self.test_backup_purge_removes_orphan_files()
+        with self.subTest('test restart manager server during backup'):
+            self.test_restart_manager_server_during_backup()
+        with self.subTest('test restart manager agent during backup'):
+            self.test_restart_manager_agent_during_backup()
+        with self.subTest('test restart node during backup'):
+            self.test_restart_node_during_backup()
+        with self.subTest('test nodetool clearsnapshot during backup'):
+            self.test_nodetool_clearsnapshot_during_backup()
         with self.subTest('Test Backup end of space'):  # Preferably at the end
             self.test_enospc_during_backup()
 
@@ -867,6 +880,37 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         mgr_cluster.delete()  # remove cluster at the end of the test
         self.log.info('finishing test_repair_multiple_keyspace_types')
 
+    def test_make_sure_repair_is_aborted(self):
+        self.log.info('starting test_make_sure_repair_is_aborted')
+
+        def has_message_appeared(log_stream_thread):
+            found_rows = list(log_stream_thread)
+            return found_rows
+
+        manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+        mgr_cluster = manager_tool.get_cluster(cluster_name=self.CLUSTER_NAME) \
+            or manager_tool.add_cluster(name=self.CLUSTER_NAME, db_cluster=self.db_cluster,
+                                        auth_token=self.monitors.mgmt_auth_token)
+        node_to_repair = self.db_cluster.nodes[-1]
+        try:
+            self._delete_keyspace_directory(db_node=node_to_repair, keyspace_name="keyspace1")
+
+            repair_task = mgr_cluster.create_repair_task(host=node_to_repair.ip_address)
+            repair_beginning_log_stream = node_to_repair.follow_system_log(
+                patterns=['*starting user-requested repair*'])
+            wait.wait_for(func=has_message_appeared, timeout=300, step=1, log_stream_thread=repair_beginning_log_stream,
+                          text=f"waiting for repair to start in {node_to_repair.ip_address}", throw_exc=True)
+            repair_task.stop()
+            repair_aborted_log_stream = node_to_repair.follow_system_log(patterns=['Aborted [0-9] repair job'])
+            wait.wait_for(func=has_message_appeared, timeout=300, step=1, log_stream_thread=repair_aborted_log_stream,
+                          text=f"waiting for repair to be aborted in {node_to_repair.ip_address}", throw_exc=True)
+        finally:
+            assuring_repair_task = mgr_cluster.create_repair_task()
+            assuring_repair_task.wait_and_get_final_status(step=10)
+            if assuring_repair_task.status != TaskStatus.DONE:
+                pass   # Ending the test with a repair so that the cluster will remain healthy
+        self.log.info('finishing test_make_sure_repair_is_aborted')
+
     def test_enospc_during_backup(self):
         self.log.info('starting test_enospc_during_backup')
         manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
@@ -901,6 +945,57 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
                 if has_enospc_been_reached:
                     clean_enospc_on_node(target_node=target_node, sleep_time=30)
         self.log.info('finishing test_enospc_during_backup')
+
+    def _disrupt_during_backup_template(self, disruption):
+        self.log.info('starting test_disrupt_during_backup'.replace("disrupt", disruption))
+        manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+        mgr_cluster = manager_tool.get_cluster(cluster_name=self.CLUSTER_NAME) \
+            or manager_tool.add_cluster(name=self.CLUSTER_NAME, db_cluster=self.db_cluster,
+                                        auth_token=self.monitors.mgmt_auth_token)
+        previous_backup_tasks = mgr_cluster.backup_task_list
+        for backup_task in previous_backup_tasks:
+            backup_task.delete_backup_snapshot()
+
+        backup_task = mgr_cluster.create_backup_task(location_list=self.locations, num_retries=0)
+        backup_task.wait_for_status(list_status=[TaskStatus.RUNNING], step=1)
+        if disruption == "manager_server":
+            self.monitors.nodes[0].restart_manager_server()
+        elif disruption == "manager_agent":
+            target_node = choice(self.db_cluster.nodes)
+            target_node.remoter.sudo("systemctl restart scylla-manager-agent")
+            target_node.wait_manager_agent_up()
+        elif disruption == "scylla_node":
+            target_node = choice(self.db_cluster.nodes)
+            target_node.restart_scylla_server()
+        elif disruption == "nodetool_clearsnapshot":
+            backup_task.wait_for_uploading_stage(step=1)
+            for node in self.db_cluster.nodes:
+                node.run_nodetool("clearsnapshot")
+        else:
+            raise ValueError(f'unfamiliar disruption "{disruption}"')
+        backup_task.wait_and_get_final_status()
+        assert backup_task.status in [TaskStatus.ERROR, TaskStatus.ERROR_FINAL], \
+            f"After disrupting the {disruption}, the backup task was expected to fail, but instead it reached" \
+            f" the status of {backup_task.status}"
+        backup_task.start(continue_task=True)
+        backup_task.wait_and_get_final_status()
+        assert backup_task.status == TaskStatus.DONE, \
+            f"Attempting re continue the backup task after its failure did no result in the task's success. Instead " \
+            f"it reached the status of {backup_task.status}"
+        self.verify_backup_success(mgr_cluster, backup_task)
+        self.log.info('finishing test_disrupt_during_backup'.replace("disrupt", disruption))
+
+    def test_restart_manager_server_during_backup(self):
+        self._disrupt_during_backup_template("manager_server")
+
+    def test_restart_manager_agent_during_backup(self):
+        self._disrupt_during_backup_template("manager_agent")
+
+    def test_restart_node_during_backup(self):
+        self._disrupt_during_backup_template("scylla_node")
+
+    def test_nodetool_clearsnapshot_during_backup(self):
+        self._disrupt_during_backup_template("nodetool_clearsnapshot")
 
     def _delete_keyspace_directory(self, db_node, keyspace_name):
         # Stop scylla service before deleting sstables to avoid partial deletion of files that are under compaction
@@ -1066,3 +1161,30 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
                 f'Task {current_task_status} did not remain in "{TaskStatus.STOPPED}" status, but instead ' \
                 f'reached "{current_task_status}" status'
         self.log.info('finishing test_suspend_and_resume_without_starting_tasks')
+
+    def test_fail_fast(self):
+        self.log.info('starting test_fail_fast')
+        manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+        mgr_cluster = manager_tool.get_cluster(cluster_name=self.CLUSTER_NAME) \
+            or manager_tool.add_cluster(name=self.CLUSTER_NAME, db_cluster=self.db_cluster,
+                                        auth_token=self.monitors.mgmt_auth_token)
+
+        repair_task_fail_fast = mgr_cluster.create_repair_task(keyspace="keyspace*", fail_fast=True)
+        repair_task_fail_fast.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=100, step=1)
+        self.db_cluster.nodes[2].restart_scylla(verify_up_after=True)
+        repair_task_fail_fast.wait_for_status(list_status=[TaskStatus.ERROR], timeout=150, step=3)
+        repair_task_fail_fast_status = repair_task_fail_fast.wait_and_get_final_status(timeout=600)
+        assert repair_task_fail_fast_status == TaskStatus.ERROR, \
+            f"Even though the task ran with the --fail-fast flag, the task didn't fail upon the first error (" \
+            f"restarting one of the nodes), and instead of reaching {TaskStatus.ERROR}," \
+            f" it ended up in {repair_task_fail_fast_status}"
+
+        repair_task = mgr_cluster.create_repair_task(keyspace="keyspace*", fail_fast=True)
+        repair_task.wait_for_status(list_status=[TaskStatus.RUNNING], timeout=300, step=10)
+
+        self.db_cluster.nodes[2].restart_scylla(verify_up_after=True)
+        repair_task_status = repair_task.wait_and_get_final_status(timeout=1200)
+        assert repair_task_status == TaskStatus.DONE, \
+            f"Even without --fail-fast flag, the repair task failed in a short time, and instead of reaching " \
+            f"{TaskStatus.DONE}, it ended up in {repair_task_status}"
+        self.log.info('finishing test_fail_fast')

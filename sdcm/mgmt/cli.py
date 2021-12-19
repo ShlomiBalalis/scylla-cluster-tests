@@ -436,7 +436,7 @@ class ManagerCluster(ScyllaManagerBase):
 
     def create_repair_task(self, dc_list=None,  # pylint: disable=too-many-arguments
                            keyspace=None, interval=None, num_retries=None, fail_fast=None,
-                           intensity=None, parallel=None):
+                           intensity=None, parallel=None, host=None):
         # the interval string:
         # Amount of time after which a successfully completed task would be run again. Supported time units include:
         #
@@ -460,6 +460,8 @@ class ManagerCluster(ScyllaManagerBase):
             cmd += f" --intensity {intensity}"
         if parallel is not None:
             cmd += f" --parallel {parallel}"
+        if host:
+            cmd += f" --host={host}"
 
         res = self.sctool.run(cmd=cmd, parse_table_res=False)
         if not res:
