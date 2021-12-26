@@ -126,8 +126,9 @@ class BackupFunctionsMixIn:
         query = f"SELECT id FROM system_schema.tables WHERE table_name='{table_name}'"
         if keyspace_name:
             query += f"and keyspace_name='{keyspace_name}'"
-        with self.db_cluster.cql_connection_patient(node) as session:
-            results = session.execute(query)
+        # with self.db_cluster.cql_connection_patient(node) as session:
+        session = self.db_cluster.cql_connection(node)
+        results = session.execute(query)
         base_id = str(results[0].id)
         if remove_hyphen:
             return base_id.replace('-', '')
@@ -473,17 +474,18 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
     def create_ks_and_tables(self, num_ks, num_table):
         # FIXME: beforehand we better change to have RF=1 to avoid restoring content while restoring replica of data
         table_name = []
-        with self.db_cluster.cql_connection_patient(self.db_cluster.nodes[0]) as session:
-            for keyspace in range(num_ks):
-                session.execute(f"CREATE KEYSPACE IF NOT EXISTS ks00{keyspace} "
-                                "WITH replication={'class':'SimpleStrategy', 'replication_factor':1}")
-                for table in range(num_table):
-                    session.execute(f'CREATE COLUMNFAMILY IF NOT EXISTS ks00{keyspace}.table00{table} '
-                                    '(key varchar, c varchar, v varchar, PRIMARY KEY(key, c))')
-                    table_name.append(f'ks00{keyspace}.table00{table}')
-                    # FIXME: improve the structure + data insertion
-                    # can use this function to populate tables better?
-                    # self.populate_data_parallel()
+        # with self.db_cluster.cql_connection_patient(self.db_cluster.nodes[0]) as session:
+        session = self.db_cluster.cql_connection(self.db_cluster.nodes[0])
+        for keyspace in range(num_ks):
+            session.execute(f"CREATE KEYSPACE IF NOT EXISTS ks00{keyspace} "
+                            "WITH replication={'class':'SimpleStrategy', 'replication_factor':1}")
+            for table in range(num_table):
+                session.execute(f'CREATE COLUMNFAMILY IF NOT EXISTS ks00{keyspace}.table00{table} '
+                                '(key varchar, c varchar, v varchar, PRIMARY KEY(key, c))')
+                table_name.append(f'ks00{keyspace}.table00{table}')
+                # FIXME: improve the structure + data insertion
+                # can use this function to populate tables better?
+                # self.populate_data_parallel()
         return table_name
 
     def test_basic_backup(self):
@@ -944,8 +946,9 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
             self.log.info('load={}'.format(stress_thread.get_results()))
             node.start_scylla_server(verify_up=True, verify_down=False)
             start_of_range = end_of_range + 1
-        with self.db_cluster.cql_connection_patient(self.db_cluster.nodes[0]) as session:
-            session.execute(f"ALTER TABLE {keyspace_name}.standard1 WITH read_repair_chance = 0.0")
+        # with self.db_cluster.cql_connection_patient(self.db_cluster.nodes[0]) as session:
+        session = self.db_cluster.cql_connection(self.db_cluster.nodes[0])
+        session.execute(f"ALTER TABLE {keyspace_name}.standard1 WITH read_repair_chance = 0.0")
 
         for node in self.db_cluster.nodes:
             node.run_nodetool("flush")
@@ -981,8 +984,9 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         assert base_repair_task.status == TaskStatus.DONE, "The base repair task did not end in the expected time"
         InfoEvent(message=f"The base repair, with no intensity argument, took {base_repair_task.duration}").publish()
 
-        with self.db_cluster.cql_connection_patient(self.db_cluster.nodes[0]) as session:
-            session.execute(f"DROP KEYSPACE IF EXISTS {keyspace_to_be_repaired}")
+        # with self.db_cluster.cql_connection_patient(self.db_cluster.nodes[0]) as session:
+        session = self.db_cluster.cql_connection(self.db_cluster.nodes[0])
+        session.execute(f"DROP KEYSPACE IF EXISTS {keyspace_to_be_repaired}")
 
         arg_list = [{"intensity": .5},
                     {"intensity": .25},
@@ -1006,8 +1010,9 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
             repair_task.wait_and_get_final_status(step=30)
             InfoEvent(message=f"repair with {arg_dict} took {repair_task.duration}").publish()
 
-            with self.db_cluster.cql_connection_patient(self.db_cluster.nodes[0]) as session:
-                session.execute(f"DROP KEYSPACE IF EXISTS {keyspace_to_be_repaired}")
+            # with self.db_cluster.cql_connection_patient(self.db_cluster.nodes[0]) as session:
+            session = self.db_cluster.cql_connection(self.db_cluster.nodes[0])
+            session.execute(f"DROP KEYSPACE IF EXISTS {keyspace_to_be_repaired}")
         InfoEvent(message='finishing test_intensity_and_parallel').publish()
 
     def test_suspend_and_resume(self):
