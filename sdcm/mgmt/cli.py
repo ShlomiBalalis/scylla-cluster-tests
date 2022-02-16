@@ -20,6 +20,7 @@ from re import findall
 from textwrap import dedent
 from statistics import mean
 from contextlib import contextmanager
+from distutils.version import LooseVersion
 
 import requests
 from invoke.exceptions import UnexpectedExit, Failure
@@ -40,6 +41,10 @@ SSL_USER_KEY_FILE = SSL_CONF_DIR + '/db.key'
 REPAIR_TIMEOUT_SEC = 7200  # 2 hours
 
 
+new_command_structure_minimum_version = LooseVersion("3.0")
+# TODO: remove these checks once manager 2.6 is no longer supported
+
+
 class ScyllaManagerBase:  # pylint: disable=too-few-public-methods
 
     def __init__(self, id, manager_node):  # pylint: disable=redefined-builtin
@@ -49,6 +54,18 @@ class ScyllaManagerBase:  # pylint: disable=too-few-public-methods
 
     def get_property(self, parsed_table, column_name):
         return self.sctool.get_table_value(parsed_table=parsed_table, column_name=column_name, identifier=self.id)
+
+    @property
+    def version(self):
+        return self.sctool.version
+
+    @property
+    def client_version(self):
+        return self.sctool.client_version
+
+    @property
+    def parsed_client_version(self):
+        return self.sctool.parsed_client_version
 
 
 class ManagerTask:
@@ -63,12 +80,18 @@ class ManagerTask:
         return self.sctool.get_table_value(parsed_table=parsed_table, column_name=column_name, identifier=self.id)
 
     def stop(self):
-        cmd = "task stop {} -c {}".format(self.id, self.cluster_id)
+        if self.sctool.parsed_client_version >= new_command_structure_minimum_version:
+            cmd = "stop {} -c {}".format(self.id, self.cluster_id)
+        else:
+            cmd = "task stop {} -c {}".format(self.id, self.cluster_id)
         self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         return self.wait_and_get_final_status(timeout=30, step=3)
 
     def start(self, continue_task=True):
-        cmd = "task start {} -c {}".format(self.id, self.cluster_id)
+        if self.sctool.parsed_client_version >= new_command_structure_minimum_version:
+            cmd = "start {} -c {}".format(self.id, self.cluster_id)
+        else:
+            cmd = "task start {} -c {}".format(self.id, self.cluster_id)
         if not continue_task:
             cmd += " --no-continue"
         self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
@@ -93,7 +116,10 @@ class ManagerTask:
         # │ b414cde5-ebe3-11e8-82c1-12c0dad619c2 │ 19 Nov 18 10:13:04 UTC │ 19 Nov 18 10:13:04 UTC │ 0s       │ NEW   │
         # │ 4e741c3d-ebe2-11e8-82c0-12c0dad619c2 │ 19 Nov 18 10:03:04 UTC │ 19 Nov 18 10:03:04 UTC │ 0s       │ NEW   │
         # ╰──────────────────────────────────────┴────────────────────────┴────────────────────────┴──────────┴───────╯
-        cmd = "task history {} -c {}".format(self.id, self.cluster_id)
+        if self.sctool.parsed_client_version >= new_command_structure_minimum_version:
+            cmd = "info {} -c {}".format(self.id, self.cluster_id)
+        else:
+            cmd = "task history {} -c {}".format(self.id, self.cluster_id)
         res = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
         return res  # or can be specified like: self.get_property(parsed_table=res, column_name='status')
 
@@ -108,8 +134,13 @@ class ManagerTask:
         # │ healthcheck/7fb6f1a7-aafc-4950-90eb-dc64729e8ecb │ 18 Nov 18 20:32:08 UTC (+15s) │ 0    │            │ NEW    │
         # │ repair/22b68423-4332-443d-b8b4-713005ea6049      │ 19 Nov 18 00:00:00 UTC (+7d)  │ 3    │            │ NEW    │
         # ╰──────────────────────────────────────────────────┴───────────────────────────────┴──────┴────────────┴────────╯
-        cmd = "task list -c {}".format(self.cluster_id)
+        if self.sctool.parsed_client_version >= new_command_structure_minimum_version:
+            cmd = "tasks -c {}".format(self.cluster_id)
+        else:
+            cmd = "task list -c {}".format(self.cluster_id)
         res = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
+        if self.sctool.parsed_client_version >= new_command_structure_minimum_version:
+            return self.get_property(parsed_table=res, column_name='Next')
         return self.get_property(parsed_table=res, column_name='next run')
 
     @property
@@ -140,7 +171,10 @@ class ManagerTask:
         """
         Gets the task's status
         """
-        cmd = "task list -c {}".format(self.cluster_id)
+        if self.sctool.parsed_client_version >= new_command_structure_minimum_version:
+            cmd = "tasks -c {}".format(self.cluster_id)
+        else:
+            cmd = "task list -c {}".format(self.cluster_id)
         # expecting output of:
         # ╭─────────────────────────────────────────────┬───────────────────────────────┬──────┬────────────┬────────╮
         # │ task                                        │ next run                      │ ret. │ properties │ status │
@@ -163,10 +197,15 @@ class ManagerTask:
         """
         Gets the task's arguments
         """
-        cmd = "task list -c {}".format(self.cluster_id)
-        res = self.sctool.run(cmd=cmd)
-        arguments_string = self.get_property(parsed_table=res, column_name='arguments')
-        return arguments_string.strip()
+        cmd = f"-c {self.cluster_id} progress {self.id}"
+        res = self.sctool.run(cmd=cmd, is_verify_errorless_result=True, parse_table_res=False)
+
+        arguments_string = ""  # If arguments parameter doesn't exist, there were no arguments in this task
+        for task_property in res:
+            if task_property[0].startswith("Arguments"):
+                arguments_string = task_property[0].split(':')[1].strip()
+                break
+        return arguments_string
 
     @property
     def progress(self) -> str:
@@ -175,7 +214,12 @@ class ManagerTask:
         """
         if self.status in [TaskStatus.NEW, TaskStatus.STARTING]:
             return " 0%"
-        cmd = "task progress {} -c {}".format(self.id, self.cluster_id)
+
+        if self.sctool.parsed_client_version >= new_command_structure_minimum_version:
+            cmd = f" -c {self.cluster_id} progress {self.id}"
+        else:
+            cmd = f" -c {self.cluster_id} task progress {self.id}"
+
         res = self.sctool.run(cmd=cmd)
         # expecting output of:
         #  Status:           RUNNING
@@ -202,7 +246,12 @@ class ManagerTask:
     def detailed_progress(self):
         if self.status in [TaskStatus.NEW, TaskStatus.STARTING]:
             return " 0%"
-        cmd = "task progress {} -c {}".format(self.id, self.cluster_id)
+
+        if self.sctool.parsed_client_version >= new_command_structure_minimum_version:
+            cmd = f" -c {self.cluster_id} progress {self.id}"
+        else:
+            cmd = f" -c {self.cluster_id} task progress {self.id}"
+
         parsed_progress_table = self.sctool.run(cmd=cmd, parse_table_res=True, is_multiple_tables=True)
         # expecting output of:
         # ...
@@ -231,7 +280,12 @@ class ManagerTask:
     def duration(self) -> datetime.timedelta:
         if self.status in [TaskStatus.NEW, TaskStatus.STARTING]:
             return duration_to_timedelta(duration_string="0")
-        cmd = "task progress {} -c {}".format(self.id, self.cluster_id)
+
+        if self.sctool.parsed_client_version >= new_command_structure_minimum_version:
+            cmd = f" -c {self.cluster_id} progress {self.id}"
+        else:
+            cmd = f" -c {self.cluster_id} task progress {self.id}"
+
         res = self.sctool.run(cmd=cmd)
         duration_string = "0"
         for task_property in res:
@@ -327,7 +381,10 @@ class BackupTask(ManagerTask):
         ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, manager_node=manager_node)
 
     def get_snapshot_tag(self, snapshot_index=0):
-        command = f" -c {self.cluster_id} task progress {self.id}"
+        if self.sctool.parsed_client_version >= new_command_structure_minimum_version:
+            command = f" -c {self.cluster_id} progress {self.id}"
+        else:
+            command = f" -c {self.cluster_id} task progress {self.id}"
         res = self.sctool.run(command, parse_table_res=False, is_verify_errorless_result=True)
         snapshot_line = [line for line in res.stdout.splitlines() if "snapshot tag" in line.lower()]
         # Returns the following:
@@ -339,7 +396,11 @@ class BackupTask(ManagerTask):
         return snapshot_tag
 
     def is_task_in_uploading_stage(self):
-        full_progress_string = self.sctool.run("task progress {} -c {}".format(self.id, self.cluster_id),
+        if self.sctool.parsed_client_version >= new_command_structure_minimum_version:
+            command = f" -c {self.cluster_id} progress {self.id}"
+        else:
+            command = f" -c {self.cluster_id} task progress {self.id}"
+        full_progress_string = self.sctool.run(command,
                                                parse_table_res=False,
                                                is_verify_errorless_result=True).stdout.lower()
         return "uploading data" in full_progress_string.lower()
@@ -386,7 +447,7 @@ class ManagerCluster(ScyllaManagerBase):
         self.id = value
 
     def create_backup_task(self, dc_list=None,  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches
-                           dry_run=None, interval=None, keyspace_list=None,
+                           dry_run=None, interval=None, keyspace_list=None, cron=None,
                            location_list=None, num_retries=None, rate_limit_list=None, retention=None, show_tables=None,
                            snapshot_parallel_list=None, start_date=None, upload_parallel_list=None, legacy_args=None):
         cmd = "backup -c {}".format(self.id)
@@ -418,6 +479,11 @@ class ManagerCluster(ScyllaManagerBase):
             cmd += " --snapshot-parallel {} ".format(snapshot_parallel_string)
         if start_date is not None:
             cmd += " --start-date {} ".format(start_date)
+        # Since currently we support both manager 2.6 and 3.0, I left the start-date parameter in,
+        # even though it's deprecated in 3.0
+        # TODO: remove start-date once 2.6 is no longer supported
+        if cron is not None:
+            cmd += " --cron {} ".format(" ".join(cron))
         if upload_parallel_list is not None:
             upload_parallel_string = ','.join(upload_parallel_list)
             cmd += " --upload-parallel {} ".format(upload_parallel_string)
@@ -431,7 +497,7 @@ class ManagerCluster(ScyllaManagerBase):
 
     def create_repair_task(self, dc_list=None,  # pylint: disable=too-many-arguments
                            keyspace=None, interval=None, num_retries=None, fail_fast=None,
-                           intensity=None, parallel=None):
+                           intensity=None, parallel=None, cron=None, start_date=None):
         # the interval string:
         # Amount of time after which a successfully completed task would be run again. Supported time units include:
         #
@@ -455,6 +521,13 @@ class ManagerCluster(ScyllaManagerBase):
             cmd += f" --intensity {intensity}"
         if parallel is not None:
             cmd += f" --parallel {parallel}"
+        if start_date is not None:
+            cmd += " --start-date {} ".format(start_date)
+        # Since currently we support both manager 2.6 and 3.0, I left the start-date parameter in, even though it's
+        # deprecated in 3.0
+        # TODO: remove start-date once 2.6 is no longer supported
+        if cron is not None:
+            cmd += " --cron {} ".format(" ".join(cron))
 
         res = self.sctool.run(cmd=cmd, parse_table_res=False)
         if not res:
@@ -542,7 +615,10 @@ class ManagerCluster(ScyllaManagerBase):
         self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
 
     def delete_task(self, task_id):
-        cmd = "-c {} task delete {}".format(self.id, task_id)
+        if self.parsed_client_version >= new_command_structure_minimum_version:
+            cmd = "stop --delete {} -c {}".format(task_id, self.id)
+        else:
+            cmd = "-c {} task delete {}".format(self.id, task_id)
         LOGGER.debug("Task Delete command to execute is: {}".format(cmd))
         self.sctool.run(cmd=cmd, parse_table_res=False)
         LOGGER.debug("Deleted the task '{}' successfully!". format(task_id))
@@ -575,7 +651,10 @@ class ManagerCluster(ScyllaManagerBase):
         return self.get_property(parsed_table=self._cluster_list, column_name='name')
 
     def _get_task_list(self):
-        cmd = "task list -c {}".format(self.id)
+        if self.parsed_client_version >= new_command_structure_minimum_version:
+            cmd = "tasks -c {}".format(self.id)
+        else:
+            cmd = "task list -c {}".format(self.id)
         return self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
 
     def _get_task_list_filtered(self, prefix, task_class):
@@ -737,15 +816,6 @@ class ScyllaManagerTool(ScyllaManagerBase):
     def _initial_wait(seconds: int):
         LOGGER.debug('Sleep %s seconds, waiting for manager service ready to respond', seconds)
         time.sleep(seconds)
-
-    @property
-    def version(self):
-        cmd = "version"
-        return self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
-
-    @property
-    def client_version(self):
-        return self.version[0][0].strip("Client version: ")
 
     @property
     def cluster_list(self):
@@ -1098,6 +1168,19 @@ class SCTool:
             return any(identifier in cur_str for cur_str in full_rows_list)
 
         return identifier in full_rows_list
+
+    @property
+    def version(self):
+        cmd = "version"
+        return self.run(cmd=cmd, is_verify_errorless_result=True)
+
+    @property
+    def client_version(self):
+        return self.version[0][0].strip("Client version: ")
+
+    @property
+    def parsed_client_version(self):
+        return LooseVersion(self.client_version)
 
 
 class ScyllaMgmt:
