@@ -46,7 +46,7 @@ class ManagerUpgradeTest(BackupFunctionsMixIn, ClusterTester):
         manager_node = self.monitors.nodes[0]
         manager_tool = get_scylla_manager_tool(manager_node=manager_node)
         self.update_all_agent_config_files()
-        current_manager_version = manager_tool.version
+        current_manager_version = manager_tool.sctool.version
         mgr_cluster = manager_tool.add_cluster(name=ManagerUpgradeTest.CLUSTER_NAME, db_cluster=self.db_cluster,
                                                auth_token=self.monitors.mgmt_auth_token)
         return mgr_cluster, current_manager_version
@@ -74,7 +74,7 @@ class ManagerUpgradeTest(BackupFunctionsMixIn, ClusterTester):
         manager_tool = get_scylla_manager_tool(manager_node=manager_node)
         manager_tool.add_cluster(name="cluster_under_test", db_cluster=self.db_cluster,
                                  auth_token=self.monitors.mgmt_auth_token)
-        current_manager_version = manager_tool.version
+        current_manager_version = manager_tool.sctool.version
 
         LOGGER.debug("Generating load")
         self.generate_load_and_wait_for_results()
@@ -105,7 +105,7 @@ class ManagerUpgradeTest(BackupFunctionsMixIn, ClusterTester):
                 f"Unknown failure in task {rerunning_backup_task.id}"
 
         with self.subTest("Creating a backup task and stopping it"):
-            legacy_args = "--force" if manager_tool.client_version.startswith("2.1") else None
+            legacy_args = "--force" if manager_tool.sctool.client_version.startswith("2.1") else None
             pausable_backup_task = mgr_cluster.create_backup_task(
                 interval="1d",
                 location_list=self.locations,
@@ -243,7 +243,7 @@ def upgrade_scylla_manager(
 
     LOGGER.debug("Comparing the new manager versions")
     manager_tool = get_scylla_manager_tool(manager_node=manager_node)
-    new_manager_version = manager_tool.version
+    new_manager_version = manager_tool.sctool.version
     assert new_manager_version != pre_upgrade_manager_version, "Manager failed to upgrade - " \
                                                                "previous and new versions are the same. Test failed!"
 
