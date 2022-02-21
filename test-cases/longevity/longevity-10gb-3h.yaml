@@ -10,7 +10,7 @@ instance_type_db: 'i3.4xlarge'
 gce_instance_type_db: 'n1-highmem-16'
 gce_instance_type_loader: 'e2-standard-4'
 run_fullscan: '{"ks_cf": "keyspace1.standard1", "interval": 5}' # 'ks.cf|random, interval(min)'
-nemesis_class_name: 'SisyphusMonkey'
+nemesis_class_name: 'MgmtChaosMonkey'
 nemesis_seed: '111'
 nemesis_interval: 2
 ssh_transport: 'libssh2'

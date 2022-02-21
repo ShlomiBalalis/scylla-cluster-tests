@@ -3740,6 +3740,19 @@ class LimitedChaosMonkey(Nemesis):
         self.call_random_disrupt_method(disrupt_methods=self.disrupt_methods_list)
 
 
+class MgmtChaosMonkey(Nemesis):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.disrupt_methods_list = ["disrupt_mgmt_repair_cli", "disrupt_mgmt_backup",
+                                     "disrupt_mgmt_backup_specific_keyspaces"]
+
+    def disrupt(self):
+        #  - MgmtRepair
+        #  - MgmtBackup
+        #  - MgmtBackupSpecificKeyspaces
+        self.call_random_disrupt_method(disrupt_methods=self.disrupt_methods_list)
+
+
 CLOUD_LIMITED_CHAOS_MONKEY = ['disrupt_nodetool_cleanup',
                               'disrupt_nodetool_drain', 'disrupt_nodetool_refresh',
                               'disrupt_stop_start_scylla_server', 'disrupt_major_compaction',
