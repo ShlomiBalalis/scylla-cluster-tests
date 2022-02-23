@@ -55,18 +55,6 @@ class ScyllaManagerBase:  # pylint: disable=too-few-public-methods
     def get_property(self, parsed_table, column_name):
         return self.sctool.get_table_value(parsed_table=parsed_table, column_name=column_name, identifier=self.id)
 
-    @property
-    def version(self):
-        return self.sctool.version
-
-    @property
-    def client_version(self):
-        return self.sctool.client_version
-
-    @property
-    def parsed_client_version(self):
-        return self.sctool.parsed_client_version
-
 
 class ManagerTask:
 
@@ -80,7 +68,7 @@ class ManagerTask:
         return self.sctool.get_table_value(parsed_table=parsed_table, column_name=column_name, identifier=self.id)
 
     def stop(self):
-        if self.sctool.parsed_client_version >= new_command_structure_minimum_version:
+        if self.sctool.is_v3_cli:
             cmd = "stop {} -c {}".format(self.id, self.cluster_id)
         else:
             cmd = "task stop {} -c {}".format(self.id, self.cluster_id)
@@ -88,7 +76,7 @@ class ManagerTask:
         return self.wait_and_get_final_status(timeout=30, step=3)
 
     def start(self, continue_task=True):
-        if self.sctool.parsed_client_version >= new_command_structure_minimum_version:
+        if self.sctool.is_v3_cli:
             cmd = "start {} -c {}".format(self.id, self.cluster_id)
         else:
             cmd = "task start {} -c {}".format(self.id, self.cluster_id)
@@ -116,7 +104,7 @@ class ManagerTask:
         # │ b414cde5-ebe3-11e8-82c1-12c0dad619c2 │ 19 Nov 18 10:13:04 UTC │ 19 Nov 18 10:13:04 UTC │ 0s       │ NEW   │
         # │ 4e741c3d-ebe2-11e8-82c0-12c0dad619c2 │ 19 Nov 18 10:03:04 UTC │ 19 Nov 18 10:03:04 UTC │ 0s       │ NEW   │
         # ╰──────────────────────────────────────┴────────────────────────┴────────────────────────┴──────────┴───────╯
-        if self.sctool.parsed_client_version >= new_command_structure_minimum_version:
+        if self.sctool.is_v3_cli:
             cmd = "info {} -c {}".format(self.id, self.cluster_id)
         else:
             cmd = "task history {} -c {}".format(self.id, self.cluster_id)
@@ -134,12 +122,12 @@ class ManagerTask:
         # │ healthcheck/7fb6f1a7-aafc-4950-90eb-dc64729e8ecb │ 18 Nov 18 20:32:08 UTC (+15s) │ 0    │            │ NEW    │
         # │ repair/22b68423-4332-443d-b8b4-713005ea6049      │ 19 Nov 18 00:00:00 UTC (+7d)  │ 3    │            │ NEW    │
         # ╰──────────────────────────────────────────────────┴───────────────────────────────┴──────┴────────────┴────────╯
-        if self.sctool.parsed_client_version >= new_command_structure_minimum_version:
+        if self.sctool.is_v3_cli:
             cmd = "tasks -c {}".format(self.cluster_id)
         else:
             cmd = "task list -c {}".format(self.cluster_id)
         res = self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
-        if self.sctool.parsed_client_version >= new_command_structure_minimum_version:
+        if self.sctool.is_v3_cli:
             return self.get_property(parsed_table=res, column_name='Next')
         return self.get_property(parsed_table=res, column_name='next run')
 
@@ -171,7 +159,7 @@ class ManagerTask:
         """
         Gets the task's status
         """
-        if self.sctool.parsed_client_version >= new_command_structure_minimum_version:
+        if self.sctool.is_v3_cli:
             cmd = "tasks -c {}".format(self.cluster_id)
         else:
             cmd = "task list -c {}".format(self.cluster_id)
@@ -201,6 +189,24 @@ class ManagerTask:
         res = self.sctool.run(cmd=cmd, is_verify_errorless_result=True, parse_table_res=False)
 
         arguments_string = ""  # If arguments parameter doesn't exist, there were no arguments in this task
+        # Output example:
+        #
+        # Status:           RUNNING (uploading data)
+        # Start time:       20 Feb 22 15:02:40 UTC
+        # Duration: 1m1s
+        # Progress: 99%
+        # Snapshot Tag:     sm_20220220150242UTC
+        # Datacenters:
+        #   - us-eastscylla_node_east
+        #   - us-west-2scylla_node_west
+        #
+        # ╭───────────────┬──────────┬──────────┬──────────┬──────────────┬────────╮
+        # │ Host          │ Progress │     Size │  Success │ Deduplicated │ Failed │
+        # ├───────────────┼──────────┼──────────┼──────────┼──────────────┼────────┤
+        # │ 3.239.214.188 │     100% │ 944.676M │ 944.676M │            0 │      0 │
+        # │ 35.86.127.236 │      99% │ 944.800M │ 944.764M │            0 │      0 │
+        # │ 44.200.32.210 │     100% │ 944.777M │ 944.777M │            0 │      0 │
+        # ╰───────────────┴──────────┴──────────┴──────────┴──────────────┴────────╯
         for task_property in res:
             if task_property[0].startswith("Arguments"):
                 arguments_string = task_property[0].split(':')[1].strip()
@@ -215,7 +221,7 @@ class ManagerTask:
         if self.status in [TaskStatus.NEW, TaskStatus.STARTING]:
             return " 0%"
 
-        if self.sctool.parsed_client_version >= new_command_structure_minimum_version:
+        if self.sctool.is_v3_cli:
             cmd = f" -c {self.cluster_id} progress {self.id}"
         else:
             cmd = f" -c {self.cluster_id} task progress {self.id}"
@@ -247,7 +253,7 @@ class ManagerTask:
         if self.status in [TaskStatus.NEW, TaskStatus.STARTING]:
             return " 0%"
 
-        if self.sctool.parsed_client_version >= new_command_structure_minimum_version:
+        if self.sctool.is_v3_cli:
             cmd = f" -c {self.cluster_id} progress {self.id}"
         else:
             cmd = f" -c {self.cluster_id} task progress {self.id}"
@@ -281,7 +287,7 @@ class ManagerTask:
         if self.status in [TaskStatus.NEW, TaskStatus.STARTING]:
             return duration_to_timedelta(duration_string="0")
 
-        if self.sctool.parsed_client_version >= new_command_structure_minimum_version:
+        if self.sctool.is_v3_cli:
             cmd = f" -c {self.cluster_id} progress {self.id}"
         else:
             cmd = f" -c {self.cluster_id} task progress {self.id}"
@@ -381,7 +387,7 @@ class BackupTask(ManagerTask):
         ManagerTask.__init__(self, task_id=task_id, cluster_id=cluster_id, manager_node=manager_node)
 
     def get_snapshot_tag(self, snapshot_index=0):
-        if self.sctool.parsed_client_version >= new_command_structure_minimum_version:
+        if self.sctool.is_v3_cli:
             command = f" -c {self.cluster_id} progress {self.id}"
         else:
             command = f" -c {self.cluster_id} task progress {self.id}"
@@ -396,7 +402,7 @@ class BackupTask(ManagerTask):
         return snapshot_tag
 
     def is_task_in_uploading_stage(self):
-        if self.sctool.parsed_client_version >= new_command_structure_minimum_version:
+        if self.sctool.is_v3_cli:
             command = f" -c {self.cluster_id} progress {self.id}"
         else:
             command = f" -c {self.cluster_id} task progress {self.id}"
@@ -615,7 +621,7 @@ class ManagerCluster(ScyllaManagerBase):
         self.sctool.run(cmd=cmd, is_verify_errorless_result=True)
 
     def delete_task(self, task_id):
-        if self.parsed_client_version >= new_command_structure_minimum_version:
+        if self.sctool.is_v3_cli:
             cmd = "stop --delete {} -c {}".format(task_id, self.id)
         else:
             cmd = "-c {} task delete {}".format(self.id, task_id)
@@ -651,7 +657,7 @@ class ManagerCluster(ScyllaManagerBase):
         return self.get_property(parsed_table=self._cluster_list, column_name='name')
 
     def _get_task_list(self):
-        if self.parsed_client_version >= new_command_structure_minimum_version:
+        if self.sctool.is_v3_cli:
             cmd = "tasks -c {}".format(self.id)
         else:
             cmd = "task list -c {}".format(self.id)
@@ -804,7 +810,7 @@ class ScyllaManagerTool(ScyllaManagerBase):
     def __init__(self, manager_node):
         ScyllaManagerBase.__init__(self, id="MANAGER", manager_node=manager_node)
         self._initial_wait(20)
-        LOGGER.info("Initiating Scylla-Manager, version: {}".format(self.version))
+        LOGGER.info("Initiating Scylla-Manager, version: {}".format(self.sctool.version))
         list_supported_distros = [Distro.CENTOS7, Distro.DEBIAN8, Distro.DEBIAN9, Distro.DEBIAN10,
                                   Distro.UBUNTU16, Distro.UBUNTU18, Distro.UBUNTU20]
         self.default_user = "centos"
@@ -912,11 +918,11 @@ class ScyllaManagerTool(ScyllaManagerBase):
         return manager_cluster
 
     def upgrade(self, scylla_mgmt_upgrade_to_repo):
-        manager_from_version = self.version
+        manager_from_version = self.sctool.version
         LOGGER.debug('Running Manager upgrade from: {} to version in repo: {}'.format(
             manager_from_version, scylla_mgmt_upgrade_to_repo))
         self.manager_node.upgrade_mgmt(scylla_mgmt_address=scylla_mgmt_upgrade_to_repo)
-        new_manager_version = self.version
+        new_manager_version = self.sctool.version
         LOGGER.debug('The Manager version after upgrade is: {}'.format(new_manager_version))
         return new_manager_version
 
@@ -962,7 +968,7 @@ class ScyllaManagerToolNonRedhat(ScyllaManagerTool):
         self.manager_repo_path = '/etc/apt/sources.list.d/scylla-manager.list'
 
     def rollback_upgrade(self, scylla_mgmt_address):
-        manager_from_version = self.version[0]
+        manager_from_version = self.sctool.version[0]
         remove_post_upgrade_repo = dedent("""
                         cqlsh -e 'DROP KEYSPACE scylla_manager'
                         sudo systemctl stop scylla-manager
@@ -1181,6 +1187,10 @@ class SCTool:
     @property
     def parsed_client_version(self):
         return LooseVersion(self.client_version)
+
+    @property
+    def is_v3_cli(self):
+        return self.parsed_client_version >= new_command_structure_minimum_version
 
 
 class ScyllaMgmt:
