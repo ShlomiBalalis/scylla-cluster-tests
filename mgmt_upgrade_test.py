@@ -13,6 +13,7 @@
 
 import logging
 from time import sleep
+from datetime import datetime, timedelta
 
 from sdcm.tester import ClusterTester
 from sdcm.mgmt import get_scylla_manager_tool, TaskStatus
@@ -189,7 +190,8 @@ def wait_until_task_finishes_return_details(task, wait=True, timeout=1000, step=
         task.wait_and_get_final_status(timeout=timeout, step=step)
     task_history = task.history
     latest_run_id = task.latest_run_id
-    task_details = {"next run": task.next_run,
+    next_run_time = next_run_string_to_datetime(is_v3_cli=task.sctool.is_v3_cli, next_run_string=task.next_run)
+    task_details = {"next run": next_run_time,
                     "latest run id": latest_run_id,
                     "start time": task.sctool.get_table_value(parsed_table=task_history, column_name="start time",
                                                               identifier=latest_run_id),
@@ -200,13 +202,42 @@ def wait_until_task_finishes_return_details(task, wait=True, timeout=1000, step=
     return task_details
 
 
+def next_run_string_to_datetime(is_v3_cli, next_run_string):
+    if is_v3_cli:
+        next_run_string = next_run_string[next_run_string.find(" ") + 1:]
+        days, hours, minutes, seconds = 0, 0, 0, 0
+        if "d" in next_run_string:
+            days = int(next_run_string[:next_run_string.find("d")])
+            next_run_string = next_run_string[next_run_string.find("d") + 1:]
+        if "h" in next_run_string:
+            hours = int(next_run_string[:next_run_string.find("h")])
+            next_run_string = next_run_string[next_run_string.find("h") + 1:]
+        if "m" in next_run_string:
+            minutes = int(next_run_string[:next_run_string.find("m")])
+            next_run_string = next_run_string[next_run_string.find("m") + 1:]
+        if "s" in next_run_string:
+            seconds = int(next_run_string[:next_run_string.find("s")])
+        next_run = datetime.utcnow() + timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds)
+    else:
+        next_run_string = next_run_string[:next_run_string.find(" (")]
+        next_run = datetime.strptime(next_run_string, "%d %b %y %H:%M:%S %Z")
+    return next_run
+
+
 def validate_previous_task_details(task, previous_task_details):
     """
     Compares the details of the task next run and history to the previously extracted next run and history
     """
     for detail_name, current_value in wait_until_task_finishes_return_details(task, wait=False).items():
-        assert current_value == previous_task_details[detail_name], \
-            f"previous task {detail_name} is not identical to the current history"
+        if current_value is datetime:
+            delta = current_value - previous_task_details[detail_name]
+            assert abs(delta.total_seconds()) < 60, \
+                f"The Next Run value changed from {str(previous_task_details[detail_name])} to {str(current_value)}"
+            # I check that the time delta is smaller than 60 seconds since we calculate the next run time on our own,
+            # and as a result it could be a BIT imprecise
+        else:
+            assert current_value == previous_task_details[detail_name], \
+                f"previous task {detail_name} is not identical to the current history"
 
 
 def upgrade_scylla_manager(
