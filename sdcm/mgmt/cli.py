@@ -1201,19 +1201,27 @@ class SCTool:
     @property
     def version(self):
         cmd = "version"
-        return self.run(cmd=cmd, is_verify_errorless_result=True)
+        version_string = self.run(cmd=cmd, is_verify_errorless_result=True)
+        LOGGER.debug("Version string: {}".format(version_string))
+        return version_string
 
     @property
     def client_version(self):
-        return self.version[0][0].strip("Client version: ")
+        client_string = self.version[0][0].strip("Client version: ")
+        LOGGER.debug("Client version: {}".format(client_string))
+        return client_string
 
     @property
     def parsed_client_version(self):
-        return LooseVersion(self.client_version)
+        parsed_version = LooseVersion(self.client_version)
+        LOGGER.debug("Parsed version: {}".format(parsed_version))
+        return parsed_version
 
     @property
     def is_v3_cli(self):
-        return self.parsed_client_version >= new_command_structure_minimum_version
+        is_new_cli = self.parsed_client_version >= new_command_structure_minimum_version
+        LOGGER.debug("Is new cli: {}".format(is_new_cli))
+        return is_new_cli
 
 
 class ScyllaMgmt:
