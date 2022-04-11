@@ -363,24 +363,24 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         4) test_client_encryption
         """
         self.generate_load_and_wait_for_results()
-        with self.subTest('Basic Backup Test'):
-            self.test_basic_backup()
-        with self.subTest('Repair Multiple Keyspace Types'):
-            self.test_repair_multiple_keyspace_types()
-        with self.subTest('Mgmt Cluster CRUD'):
-            self.test_mgmt_cluster_crud()
-        with self.subTest('Mgmt cluster Health Check'):
-            self.test_mgmt_cluster_healthcheck()
-        # test_healthcheck_change_max_timeout requires a multi dc run. And since ipv6 cannot run in multi dc, this test
-        # function will be skipped for ipv6 runs.
-        if self.db_cluster.nodes[0].test_config.IP_SSH_CONNECTIONS != "ipv6":
-            with self.subTest('Basic test healthcheck change max timeout'):
-                self.test_healthcheck_change_max_timeout()
+        # with self.subTest('Basic Backup Test'):
+        #     self.test_basic_backup()
+        # with self.subTest('Repair Multiple Keyspace Types'):
+        #     self.test_repair_multiple_keyspace_types()
+        # with self.subTest('Mgmt Cluster CRUD'):
+        #     self.test_mgmt_cluster_crud()
+        # with self.subTest('Mgmt cluster Health Check'):
+        #     self.test_mgmt_cluster_healthcheck()
+        # # test_healthcheck_change_max_timeout requires a multi dc run. And since ipv6 cannot run in multi dc, this test
+        # # function will be skipped for ipv6 runs.
+        # if self.db_cluster.nodes[0].test_config.IP_SSH_CONNECTIONS != "ipv6":
+        #     with self.subTest('Basic test healthcheck change max timeout'):
+        #         self.test_healthcheck_change_max_timeout()
         with self.subTest('Basic test suspend and resume'):
             self.test_suspend_and_resume()
-        with self.subTest('Client Encryption'):
-            # Since this test activates encryption, it has to be the last test in the sanity
-            self.test_client_encryption()
+        # with self.subTest('Client Encryption'):
+        #     # Since this test activates encryption, it has to be the last test in the sanity
+        #     self.test_client_encryption()
 
     def test_repair_intensity_feature_on_multiple_node(self):
         self._repair_intensity_feature(fault_multiple_nodes=True)
@@ -983,12 +983,12 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         InfoEvent(message='finishing test_intensity_and_parallel').publish()
 
     def test_suspend_and_resume(self):
-        with self.subTest('Suspend and resume backup task'):
-            self._suspend_and_resume_task_template(task_type="backup")
-        with self.subTest('Suspend and resume repair task'):
-            self._suspend_and_resume_task_template(task_type="repair")
-        with self.subTest('Suspend and resume without starting task'):
-            self.test_suspend_and_resume_without_starting_tasks()
+        # with self.subTest('Suspend and resume backup task'):
+        #     self._suspend_and_resume_task_template(task_type="backup")
+        # with self.subTest('Suspend and resume repair task'):
+        #     self._suspend_and_resume_task_template(task_type="repair")
+        # with self.subTest('Suspend and resume without starting task'):
+        #     self.test_suspend_and_resume_without_starting_tasks()
         with self.subTest('Suspend with on resume start tasks flag after duration has passed'):
             self._template_suspend_with_on_resume_start_tasks_flag(wait_for_duration=True)
         with self.subTest('Suspend with on resume start tasks flag before duration has passed'):
