@@ -1875,6 +1875,18 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
             else:
                 self.remoter.sudo("systemctl start scylla-manager-agent")
 
+    def stop_manager_agent(self):
+        if self.is_docker():
+            self.remoter.sudo("supervisorctl stop scylla-manager-agent")
+        else:
+            self.remoter.sudo("systemctl stop scylla-manager-agent")
+
+    def start_manager_agent(self):
+        if self.is_docker():
+            self.remoter.sudo("supervisorctl start scylla-manager-agent")
+        else:
+            self.remoter.sudo("systemctl start scylla-manager-agent")
+
     def clean_scylla_data(self):
         """Clean all scylla data file
 

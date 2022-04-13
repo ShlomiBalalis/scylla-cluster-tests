@@ -38,7 +38,7 @@ from sdcm.remote import shell_script_cmd
 from sdcm.tester import ClusterTester
 from sdcm.cluster import TestConfig
 from sdcm.nemesis import MgmtRepair
-from sdcm.utils.common import reach_enospc_on_node, clean_enospc_on_node
+from sdcm.utils.common import reach_enospc_on_node, clean_enospc_on_node, parse_nodetool_listsnapshots
 from sdcm.sct_events.system import InfoEvent
 from sdcm.sct_events.filters import DbEventsFilter
 from sdcm.sct_events.database import DatabaseLogEvent
@@ -547,6 +547,50 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         # TODO: verify that the rate limit is as set in the cmd
         self.verify_backup_success(mgr_cluster=mgr_cluster, backup_task=backup_task)
         self.log.info('finishing test_backup_rate_limit')
+
+    def test_failed_backup_snapshots_deleted_on_rerun(self):
+        self.log.info('starting test_basic_backup')
+        manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+        mgr_cluster = manager_tool.get_cluster(cluster_name=self.CLUSTER_NAME) \
+            or manager_tool.add_cluster(name=self.CLUSTER_NAME, db_cluster=self.db_cluster,
+                                        auth_token=self.monitors.mgmt_auth_token)
+        pre_test_local_snapshot_files = self._get_all_remaining_local_snapshots()
+
+        backup_task = mgr_cluster.create_backup_task(location_list=self.locations)
+        backup_task.wait_for_uploading_stage(step=3)
+        for node in self.db_cluster.nodes:
+            node.stop_manager_agent()
+        backup_task.wait_for_status(list_status=[TaskStatus.ABORTED, TaskStatus.ERROR], timeout=180, step=5)
+        for node in self.db_cluster.nodes:
+            node.start_manager_agent()
+        time.sleep(100)
+        self.log.info("STATUS AFTER SLEEP: {}".format(backup_task.status))
+        post_aborting_local_snapshot_files = self._get_all_remaining_local_snapshots()
+        new_local_snapshot_files = post_aborting_local_snapshot_files - pre_test_local_snapshot_files
+        assert new_local_snapshot_files, "Aborting a backup task during the upload has failed to create snapshot files"
+
+        backup_task.start(continue_task=False)
+        backup_task_status = backup_task.wait_and_get_final_status(timeout=1200, step=10)
+        assert backup_task_status == TaskStatus.DONE, \
+            f"Backup task ended in {backup_task_status} instead of {TaskStatus.DONE}"
+        post_backup_local_snapshot_files = self._get_all_remaining_local_snapshots()
+        snapshot_files_diff = post_backup_local_snapshot_files - pre_test_local_snapshot_files
+        assert snapshot_files_diff, f"After rerunning the backup task, unnecessary snapshot files remained in the " \
+                                    f"cluster:\n{snapshot_files_diff}"
+        self.verify_backup_success(mgr_cluster=mgr_cluster, backup_task=backup_task)
+        mgr_cluster.delete()  # remove cluster at the end of the test
+        self.log.info('finishing test_basic_backup')
+
+    def _get_all_remaining_local_snapshots(self):
+        complete_snapshot_set = set()
+        for node in self.db_cluster.nodes:
+            result = node.run_nodetool('listsnapshots')
+            self.log.debug(result)
+            snapshots_content = parse_nodetool_listsnapshots(listsnapshots_output=result.stdout)
+            node_specific_snapshot_set = {f"{node.name}-{snapshot_name}" for snapshot_name in snapshots_content.keys()}
+            # complete_snapshot_dict[node.ip_address] = list(snapshots_content.keys())
+            complete_snapshot_set.update(node_specific_snapshot_set)
+        return complete_snapshot_set
 
     @staticmethod
     def _get_all_snapshot_files_s3(cluster_id, bucket_name, region_name):
