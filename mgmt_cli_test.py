@@ -462,15 +462,16 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
     def test_backup_feature(self):
         self.generate_load_and_wait_for_results()
         with self.subTest('Backup Multiple KS\' and Tables'):
-            self.test_backup_multiple_ks_tables()
-        with self.subTest('Backup to Location with path'):
-            self.test_backup_location_with_path()
-        with self.subTest('Test Backup Rate Limit'):
-            self.test_backup_rate_limit()
-        with self.subTest('Test Backup Purge Removes Orphans Files'):
-            self.test_backup_purge_removes_orphan_files()
-        with self.subTest('Test Backup end of space'):  # Preferably at the end
-            self.test_enospc_during_backup()
+            self.test_failed_backup_snapshots_deleted_on_rerun()
+        #     self.test_backup_multiple_ks_tables()
+        # with self.subTest('Backup to Location with path'):
+        #     self.test_backup_location_with_path()
+        # with self.subTest('Test Backup Rate Limit'):
+        #     self.test_backup_rate_limit()
+        # with self.subTest('Test Backup Purge Removes Orphans Files'):
+        #     self.test_backup_purge_removes_orphan_files()
+        # with self.subTest('Test Backup end of space'):  # Preferably at the end
+        #     self.test_enospc_during_backup()
 
     def create_ks_and_tables(self, num_ks, num_table):
         # FIXME: beforehand we better change to have RF=1 to avoid restoring content while restoring replica of data
