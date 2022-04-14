@@ -1373,7 +1373,7 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
                           step=10, text=text, timeout=timeout, throw_exc=True)
 
     def restart_manager_server(self, port=None):
-        self.remoter.sudo("systemctl restart scylla-manager")
+        self.remoter.sudo("systemctl restart scylla-manager.service")
         self.wait_manager_server_up(port=port)
 
     # Configuration node-exporter.service when use IPv6
