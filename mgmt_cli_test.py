@@ -52,6 +52,7 @@ class BackupFunctionsMixIn:
     backup_azure_blob_service = None
     backup_azure_blob_sas = None
     test_config = TestConfig()
+    is_dependencies_installed_on_all_nodes = False
 
     @cached_property
     def locations(self) -> list[str]:
@@ -101,6 +102,22 @@ class BackupFunctionsMixIn:
             f"https://{self.test_config.backup_azure_blob_credentials['account']}.blob.core.windows.net/"
         self.backup_azure_blob_sas = self.test_config.backup_azure_blob_credentials["download_sas"]
 
+    def install_dependencies_on_all_nodes(self):
+        if not self.is_dependencies_installed_on_all_nodes:
+            backup_bucket_backend = self.params.get("backup_bucket_backend")
+            if backup_bucket_backend == "s3":
+                install_dependencies_func = self.install_awscli_dependencies
+            elif backup_bucket_backend == "gcs":
+                install_dependencies_func = self.install_gsutil_dependencies
+            elif backup_bucket_backend == "azure":
+                install_dependencies_func = self.install_azcopy_dependencies
+            else:
+                raise ValueError(f'{backup_bucket_backend=} is not supported')
+
+            for node in self.db_cluster.nodes:
+                install_dependencies_func(node=node)
+            self.is_dependencies_installed_on_all_nodes = True
+
     @staticmethod
     def download_from_s3(node, source, destination):
         node.remoter.sudo(f"aws s3 cp '{source}' '{destination}'")
@@ -113,6 +130,39 @@ class BackupFunctionsMixIn:
         # azure://<bucket>/<path> -> https://<account>.blob.core.windows.net/<bucket>/<path>?SAS
         source = f"{source.replace('azure://', self.backup_azure_blob_service)}{self.backup_azure_blob_sas}"
         node.remoter.sudo(f"azcopy copy '{source}' '{destination}'")
+
+    @staticmethod
+    def delete_from_s3_bucket(node, path):
+        _, rest_of_path = path.split(":", maxsplit=1)  # Removing the "s3" prefix
+        # bucket_name, object_path = rest_of_path.split("/", maxsplit=1)
+        node.remoter.sudo(f"aws s3 rm s3://{rest_of_path} --recursive")
+        # s3_client = boto3.client('s3', region_name=region_name)
+        # paginator = s3_client.delete_objects(Bucket=bucket_name, Delete=_RequiredDeleteTypeDef)
+        # # paginator = s3_client.get_paginator('delete_objects')
+        # pages = paginator.paginate(Bucket=bucket_name, Prefix=f'backup/sst/cluster/{cluster_id}')
+        # for page in pages:
+        #     # No Contents key means that no snapshot file of the cluster exist,
+        #     # probably no backup ran before this function
+        #     if "Contents" in page:
+        #         content_list = page["Contents"]
+        #         file_set.update([item["Key"] for item in content_list])
+        # return file_set
+
+    @staticmethod
+    def delete_from_gce_bucket(path):
+        gcp_credentials = KeyStore().get_gcp_credentials()
+        gce_driver = libcloud.storage.providers.get_driver(libcloud.storage.types.Provider.GOOGLE_STORAGE)
+        driver = gce_driver(gcp_credentials["project_id"] + "@appspot.gserviceaccount.com",
+                            gcp_credentials["private_key"],
+                            project=gcp_credentials["project_id"])
+        driver.delete_object(obj=path)
+
+    @staticmethod
+    def delete_from_azure_bucket(path):
+        credentials = KeyStore().get_backup_azure_blob_credentials()
+        azure_driver_object = libcloud.storage.providers.get_driver(libcloud.storage.types.Provider.AZURE_BLOBS)
+        driver = azure_driver_object(key=credentials["account"], secret=credentials["key"])
+        driver.delete_object(obj=path)
 
     def get_table_id(self, node, table_name, keyspace_name=None, remove_hyphen=True):
         """
@@ -135,20 +185,16 @@ class BackupFunctionsMixIn:
     def restore_backup(self, mgr_cluster, snapshot_tag, keyspace_and_table_list):  # pylint: disable=too-many-locals
         backup_bucket_backend = self.params.get("backup_bucket_backend")
         if backup_bucket_backend == "s3":
-            install_dependencies = self.install_awscli_dependencies
             download = self.download_from_s3
         elif backup_bucket_backend == "gcs":
-            install_dependencies = self.install_gsutil_dependencies
             download = self.download_from_gs
         elif backup_bucket_backend == "azure":
-            install_dependencies = self.install_azcopy_dependencies
             download = self.download_from_azure
         else:
             raise ValueError(f'{backup_bucket_backend=} is not supported')
-
+        self.install_dependencies_on_all_nodes()
         per_node_backup_file_paths = mgr_cluster.get_backup_files_dict(snapshot_tag)
         for node in self.db_cluster.nodes:
-            install_dependencies(node=node)
             node_data_path = Path("/var/lib/scylla/data")
             node_id = node.host_id
             for keyspace, tables in keyspace_and_table_list.items():
@@ -551,16 +597,19 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
 
     def test_failed_backup_snapshots_deleted_on_rerun(self):
         self.log.info('starting test_basic_backup')
+        self.install_dependencies_on_all_nodes()
+        # Add random element so it will work on simultaneous runs
+        location_list = [f'{location}/pathtofailabackup/' for location in self.locations]
         manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
         mgr_cluster = manager_tool.get_cluster(cluster_name=self.CLUSTER_NAME) \
             or manager_tool.add_cluster(name=self.CLUSTER_NAME, db_cluster=self.db_cluster,
                                         auth_token=self.monitors.mgmt_auth_token)
         pre_test_local_snapshot_files = self._get_all_remaining_local_snapshots()
 
-        backup_task = mgr_cluster.create_backup_task(location_list=self.locations)
-        backup_task.wait_for_uploading_stage(step=3)
-        for node in self.db_cluster.nodes:
-            node.stop_manager_agent()
+        backup_task = mgr_cluster.create_backup_task(location_list=location_list)
+        backup_task.wait_for_uploading_stage(step=1)
+        for path in location_list:
+            self.delete_from_s3_bucket(node=self.db_cluster.nodes[0], path=path)
         backup_task.wait_for_status(list_status=[TaskStatus.ABORTED, TaskStatus.ERROR], timeout=180, step=5)
         for node in self.db_cluster.nodes:
             node.start_manager_agent()
