@@ -31,7 +31,7 @@ from invoke import exceptions
 from pkg_resources import parse_version
 
 from sdcm import mgmt
-from sdcm.mgmt import ScyllaManagerError, TaskStatus, HostStatus, HostSsl, HostRestStatus
+from sdcm.mgmt import TaskStatus, HostStatus, HostSsl, HostRestStatus
 from sdcm.mgmt.cli import ScyllaManagerTool
 from sdcm.mgmt.common import reconfigure_scylla_manager
 from sdcm.remote import shell_script_cmd
@@ -525,10 +525,10 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         mgr_cluster = manager_tool.get_cluster(cluster_name=self.CLUSTER_NAME) \
             or manager_tool.add_cluster(name=self.CLUSTER_NAME, db_cluster=self.db_cluster,
                                         auth_token=self.monitors.mgmt_auth_token)
-        try:
-            mgr_cluster.create_backup_task(location_list=[f'{location}/path_testing/' for location in self.locations])
-        except ScyllaManagerError as error:
-            self.log.info('Expected to fail - error: {}'.format(error))
+        backup_task = mgr_cluster.create_backup_task(
+            location_list=[f'{location}/path_testing/' for location in self.locations])
+        final_status = backup_task.wait_and_get_final_status(timeout=900, step=5)
+        assert final_status == TaskStatus.DONE
         self.log.info('finishing test_backup_location_with_path')
 
     def test_backup_rate_limit(self):
