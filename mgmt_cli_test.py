@@ -21,6 +21,7 @@ from pathlib import Path
 from functools import cached_property
 import re
 import time
+# from datetime import datetime, timedelta
 from textwrap import dedent
 
 import boto3
@@ -642,10 +643,16 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         mgr_cluster = manager_tool.get_cluster(cluster_name=self.CLUSTER_NAME) \
             or manager_tool.add_cluster(name=self.CLUSTER_NAME, db_cluster=self.db_cluster,
                                         auth_token=self.monitors.mgmt_auth_token)
-        repair_task = mgr_cluster.create_repair_task(fail_fast=True)
         dict_host_health = mgr_cluster.get_hosts_health()
         for host_health in dict_host_health.values():
             assert host_health.ssl == HostSsl.OFF, "Not all hosts ssl is 'OFF'"
+        # intended_run_time = datetime.now() + timedelta(minutes=8)
+        repair_task = mgr_cluster.create_repair_task(fail_fast=True)
+        # , cron=[intended_run_time.minute,
+        # intended_run_time.hour,
+        # "*",
+        # "*",
+        # "*"])
 
         with DbEventsFilter(db_event=DatabaseLogEvent.DATABASE_ERROR, line="failed to do checksum for"), \
                 DbEventsFilter(db_event=DatabaseLogEvent.RUNTIME_ERROR, line="failed to do checksum for"), \
@@ -656,6 +663,7 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
 
             self.db_cluster.enable_client_encrypt()
 
+            # repair_task.start(continue_task=True)
             repair_task.wait_for_status(list_status=[TaskStatus.ERROR, TaskStatus.ERROR_FINAL], step=5, timeout=240)
 
         mgr_cluster.update(client_encrypt=True)

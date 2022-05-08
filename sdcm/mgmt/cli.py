@@ -572,7 +572,8 @@ class ManagerCluster(ScyllaManagerBase):
         # deprecated in 3.0
         # TODO: remove start-date once 2.6 is no longer supported
         if cron is not None:
-            cmd += " --cron {} ".format(" ".join(cron))
+            cmd += " --cron '{}' ".format(" ".join([f"{i:02}" if isinstance(i, int) else i for i in cron]))
+            # converting ints to strings for the join
 
         res = self.sctool.run(cmd=cmd, parse_table_res=False)
         if not res:
