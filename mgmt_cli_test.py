@@ -148,7 +148,8 @@ class BackupFunctionsMixIn:
 
         per_node_backup_file_paths = mgr_cluster.get_backup_files_dict(snapshot_tag)
         for node in self.db_cluster.nodes:
-            install_dependencies(node=node)
+            if backup_bucket_backend != "gcs":
+                install_dependencies(node=node)
             node_data_path = Path("/var/lib/scylla/data")
             node_id = node.host_id
             for keyspace, tables in keyspace_and_table_list.items():
