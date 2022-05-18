@@ -6,6 +6,7 @@ manager_repos_by_version:
     debian11: 'http://downloads.scylladb.com/manager/deb/unstable/unified-deb/master/latest/scylla-manager.list'
     ubuntu18: 'http://downloads.scylladb.com/manager/deb/unstable/unified-deb/master/latest/scylla-manager.list'
     ubuntu20: 'http://downloads.scylladb.com/manager/deb/unstable/unified-deb/master/latest/scylla-manager.list'
+    ubuntu22: 'http://downloads.scylladb.com/manager/deb/unstable/unified-deb/master/latest/scylla-manager.list'
   "2.6":
     centos7: 'http://downloads.scylladb.com/rpm/centos/scylladb-manager-2.6.repo'
     centos8: 'http://downloads.scylladb.com/rpm/centos/scylladb-manager-2.6.repo'
@@ -13,6 +14,7 @@ manager_repos_by_version:
     debian11: 'http://downloads.scylladb.com/deb/debian/scylladb-manager-2.6.list'
     ubuntu18: 'http://downloads.scylladb.com/deb/ubuntu/scylladb-manager-2.6-bionic.list'
     ubuntu20: 'http://downloads.scylladb.com/deb/ubuntu/scylladb-manager-2.6-focal.list'
+    ubuntu22: 'http://downloads.scylladb.com/deb/ubuntu/scylladb-manager-2.6.list'
   "2.5":
     centos7: 'http://downloads.scylladb.com/rpm/centos/scylladb-manager-2.5.repo'
     centos8: 'http://downloads.scylladb.com/rpm/centos/scylladb-manager-2.5.repo'
@@ -38,5 +40,7 @@ scylla_backend_repo_by_version:
     centos7: 'http://downloads.scylladb.com/rpm/centos/scylla-2021.1.repo'
     centos8: 'http://downloads.scylladb.com/rpm/centos/scylla-2021.1.repo'
     debian10: 'http://downloads.scylladb.com/deb/ubuntu/scylla-2021.1.list'
+    debian11: 'http://downloads.scylladb.com/deb/ubuntu/scylla-2021.1.list'
     ubuntu18: 'http://downloads.scylladb.com/deb/ubuntu/scylla-2021.1.list'
     ubuntu20: 'http://downloads.scylladb.com/deb/ubuntu/scylla-2021.1.list'
+    ubuntu22: 'http://downloads.scylladb.com/deb/ubuntu/scylla-2021.1.list'
