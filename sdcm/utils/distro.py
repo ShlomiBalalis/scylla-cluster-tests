@@ -44,6 +44,7 @@ class Distro(enum.Enum):
     UBUNTU20 = ("ubuntu", "20.04")
     UBUNTU21 = ("ubuntu", "21.04")
     UBUNTU21_10 = ("ubuntu", "21.10")
+    UBUNTU22 = ("ubuntu", "22.04")
     SLES15 = ("sles", "15")
 
     @classmethod
