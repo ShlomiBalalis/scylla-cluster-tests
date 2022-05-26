@@ -98,7 +98,7 @@ def recover_conf(node):
             r'sudo cp -v $conf.backup $conf; done')
 
 
-class UpgradeTest(FillDatabaseData):
+class UpgradeTest(FillDatabaseData):  # pylint: disable=too-many-public-methods
     """
     Test a Scylla cluster upgrade.
     """
@@ -146,7 +146,7 @@ class UpgradeTest(FillDatabaseData):
                 self.assertTrue(truncated_time,
                                 msg='Expected truncated entry in the system.local table, but it\'s not found')
 
-    @truncate_entries
+    # @truncate_entries
     def upgrade_node(self, node, upgrade_sstables=True):
         # pylint: disable=too-many-branches,too-many-statements
         new_scylla_repo = self.params.get('new_scylla_repo')
@@ -245,7 +245,7 @@ class UpgradeTest(FillDatabaseData):
         if upgrade_sstables:
             self.upgradesstables_if_command_available(node)
 
-    @truncate_entries
+    # @truncate_entries
     def rollback_node(self, node, upgrade_sstables=True):
         # pylint: disable=too-many-branches,too-many-statements
 
@@ -491,6 +491,10 @@ class UpgradeTest(FillDatabaseData):
 
         return [x for x in chain.from_iterable(zip_longest(*dc_nodes.values())) if x]
 
+    def compact(self):
+        for node in self.db_cluster.nodes:
+            node.remoter.sudo("nodetool compact")
+
     def test_rolling_upgrade(self):  # pylint: disable=too-many-locals,too-many-statements
         """
         Upgrade half of nodes in the cluster, and start special read workload
@@ -573,6 +577,7 @@ class UpgradeTest(FillDatabaseData):
             self.upgrade_node(self.db_cluster.node_to_upgrade)
             InfoEvent(message='Upgrade Node %s ended' % self.db_cluster.node_to_upgrade.name).publish()
             self.db_cluster.node_to_upgrade.check_node_health()
+            self.compact()
 
             # wait for the prepare write workload to finish
             # self.verify_stress_thread(prepare_write_cs_thread_pool)
@@ -583,9 +588,9 @@ class UpgradeTest(FillDatabaseData):
             # read_stress_queue = self.run_stress_thread(stress_cmd=stress_cmd_read_cl_quorum)
             # # wait for the read workload to finish
             # self.verify_stress_thread(read_stress_queue)
-            # InfoEvent(message='after upgraded one node').publish()
-            # self.search_for_idx_token_error_after_upgrade(node=self.db_cluster.node_to_upgrade,
-            #                                               step=step+' - after upgraded one node')
+            InfoEvent(message='after upgraded one node').publish()
+            self.search_for_idx_token_error_after_upgrade(node=self.db_cluster.node_to_upgrade,
+                                                          step=step+' - after upgraded one node')
 
             # read workload
             # InfoEvent(message='Starting c-s read workload for 10m').publish()
@@ -603,6 +608,7 @@ class UpgradeTest(FillDatabaseData):
             self.upgrade_node(self.db_cluster.node_to_upgrade)
             InfoEvent(message='Upgrade Node %s ended' % self.db_cluster.node_to_upgrade.name).publish()
             self.db_cluster.node_to_upgrade.check_node_health()
+            self.compact()
 
             # wait for the 10m read workload to finish
             # self.verify_stress_thread(read_10m_cs_thread_pool)
@@ -623,14 +629,15 @@ class UpgradeTest(FillDatabaseData):
             self.rollback_node(self.db_cluster.nodes[indexes[1]])
             InfoEvent(message='Rollback Node %s ended' % self.db_cluster.nodes[indexes[1]].name).publish()
             self.db_cluster.nodes[indexes[1]].check_node_health()
+            self.compact()
 
         step = 'Step4 - Verify data during mixed cluster mode '
         InfoEvent(message=step).publish()
         # self.fill_and_verify_db_data('after rollback the second node')
         # InfoEvent(message='Repair the first upgraded Node').publish()
         # self.db_cluster.nodes[indexes[0]].run_nodetool(sub_cmd='repair')
-        # self.search_for_idx_token_error_after_upgrade(node=self.db_cluster.node_to_upgrade,
-        #                                               step=step)
+        self.search_for_idx_token_error_after_upgrade(node=self.db_cluster.node_to_upgrade,
+                                                      step=step)
 
         with ignore_upgrade_schema_errors():
 
@@ -642,9 +649,10 @@ class UpgradeTest(FillDatabaseData):
                 self.upgrade_node(self.db_cluster.node_to_upgrade)
                 InfoEvent(message='Upgrade Node %s ended' % self.db_cluster.node_to_upgrade.name).publish()
                 self.db_cluster.node_to_upgrade.check_node_health()
-                self.fill_and_verify_db_data('after upgraded %s' % self.db_cluster.node_to_upgrade.name)
-                # self.search_for_idx_token_error_after_upgrade(node=self.db_cluster.node_to_upgrade,
-                #                                               step=step)
+                # self.fill_and_verify_db_data('after upgraded %s' % self.db_cluster.node_to_upgrade.name)
+                self.compact()
+                self.search_for_idx_token_error_after_upgrade(node=self.db_cluster.node_to_upgrade,
+                                                              step=step)
 
         InfoEvent(message='Step6 - Verify stress results after upgrade ').publish()
         InfoEvent(message='Waiting for stress threads to complete after upgrade').publish()
