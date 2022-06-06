@@ -38,11 +38,9 @@ class SnitchTest(ClusterTester):
         if backend == "gce":
             self.check_nodetool_status_output_gce()
         elif backend == "aws":
-            # self.check_nodetool_status_output_aws()
-            pass
+            self.check_nodetool_status_output_aws()
         elif backend == "azure":
-            # self.check_nodetool_status_output_azure()
-            pass
+            self.check_nodetool_status_output_azure()
 
         self.log.info("PASS: system.peers isn't empty as expected")
 
@@ -50,8 +48,14 @@ class SnitchTest(ClusterTester):
         cs_thread_pool = self.run_stress_thread(stress_cmd=stress_cmd)
         self.verify_stress_thread(cs_thread_pool=cs_thread_pool)
 
+    def check_nodetool_status_output_aws(self):
+        pass
+
     def check_nodetool_status_output_gce(self):
         result = self.db_cluster.nodes[0].get_nodes_status()
         all_datacenters = {result[node]["dc"] for node in result.keys()}
         assert 'us-east1scylla_node_east' in all_datacenters
         assert 'us-west1scylla_node_west' in all_datacenters
+
+    def check_nodetool_status_output_azure(self):
+        pass
