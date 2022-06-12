@@ -84,7 +84,7 @@ class AWSCluster(cluster.BaseCluster):  # pylint: disable=too-many-instance-attr
                  ec2_user_data='', ec2_block_device_mappings=None,
                  cluster_prefix='cluster',
                  node_prefix='node', n_nodes=10, params=None, node_type=None,
-                 extra_network_interface=False, add_nodes=True):
+                 extra_network_interface=False, add_nodes=True, config_ssh_keys_for_ubuntu_22_monitor=False):
         # pylint: disable=too-many-locals
         region_names = params.region_names
         if len(credentials) > 1 or len(region_names) > 1:
@@ -103,6 +103,7 @@ class AWSCluster(cluster.BaseCluster):  # pylint: disable=too-many-instance-attr
         self._ec2_user_data = ec2_user_data
         self.region_names = region_names
         self.params = params
+        self.config_ssh_keys_for_ubuntu_22_monitor = config_ssh_keys_for_ubuntu_22_monitor
 
         super().__init__(cluster_uuid=cluster_uuid,
                          cluster_prefix=cluster_prefix,
@@ -387,7 +388,7 @@ class AWSCluster(cluster.BaseCluster):  # pylint: disable=too-many-instance-attr
                 ec2_user_data = post_boot_script
 
         #  replace user_data json with cloud-init content if preinstalled scylla is not used
-        if not self.params.get("use_preinstalled_scylla"):
+        if not self.params.get("use_preinstalled_scylla") or self.config_ssh_keys_for_ubuntu_22_monitor:
             ec2_user_data = get_cloud_init_config()
 
         instances = self._create_or_find_instances(count=count, ec2_user_data=ec2_user_data, dc_idx=dc_idx)
@@ -1000,6 +1001,7 @@ class MonitorSetAWS(cluster.BaseMonitorSet, AWSCluster):
         cluster.BaseMonitorSet.__init__(
             self, targets=targets, params=params, monitor_id=monitor_id,
         )
+        config_ssh_keys_for_ubuntu_22_monitor = self.params.get("ami_monitor_user") == "ubuntu"
 
         AWSCluster.__init__(self,
                             ec2_ami_id=ec2_ami_id,
@@ -1015,4 +1017,5 @@ class MonitorSetAWS(cluster.BaseMonitorSet, AWSCluster):
                             n_nodes=n_nodes,
                             params=params,
                             node_type=node_type,
-                            add_nodes=add_nodes)
+                            add_nodes=add_nodes,
+                            config_ssh_keys_for_ubuntu_22_monitor=config_ssh_keys_for_ubuntu_22_monitor)
