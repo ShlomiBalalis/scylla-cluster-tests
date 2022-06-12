@@ -2040,6 +2040,8 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
             self.remoter.run('sudo apt-get install -y rsync tcpdump screen')
             self.download_scylla_repo(scylla_repo)
             self.remoter.run('sudo apt-get update')
+            if self.distro.is_ubuntu22:
+                self.remoter.sudo("ln -s /use/bin/python3 /usr/bin/python")
             self.remoter.run(
                 'sudo apt-get install -y '
                 ' {} '.format(self.scylla_pkg()))
