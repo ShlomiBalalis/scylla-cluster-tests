@@ -30,6 +30,7 @@ from collections import defaultdict, Counter, namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from functools import wraps, partial
 from typing import List, Optional, Type, Callable, Tuple, Dict, Set, Union
+from types import MethodType
 
 from cassandra import ConsistencyLevel
 from invoke import UnexpectedExit
@@ -169,14 +170,12 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
     limited: bool = False           # flag that signal that nemesis are belong to limited set of nemesises
     has_steady_run: bool = False    # flag that signal that nemesis should be run with perf tests with steady run
 
-    def __new__(cls, tester_obj, termination_event, *args):  # pylint: disable=unused-argument
-        for name, member in inspect.getmembers(cls, lambda x: inspect.isfunction(x) or inspect.ismethod(x)):
-            if name.startswith(cls.DISRUPT_NAME_PREF):
-                # add "disrupt_method_wrapper" decorator to all methods are started with "disrupt_"
-                setattr(cls, name, disrupt_method_wrapper(member))
-        return object.__new__(cls)
-
     def __init__(self, tester_obj, termination_event, *args):  # pylint: disable=unused-argument
+        for name, member in inspect.getmembers(self, lambda x: inspect.isfunction(x) or inspect.ismethod(x)):
+            if name.startswith(self.DISRUPT_NAME_PREF):
+                # add "disrupt_method_wrapper" decorator to all methods are started with "disrupt_"
+                setattr(self, name, MethodType(disrupt_method_wrapper(member), self))
+
         # *args -  compatible with CategoricalMonkey
         self.tester = tester_obj  # ClusterTester object
         self.cluster: Union[BaseCluster, BaseScyllaCluster] = tester_obj.db_cluster
@@ -3650,7 +3649,7 @@ def disrupt_method_wrapper(method):  # pylint: disable=too-many-statements
             nemesis_info = argus_create_nemesis_info(nemesis=args[0], class_name=class_name,
                                                      method_name=method_name, start_time=start_time)
             try:
-                result = method(*args, **kwargs)
+                result = method(*args[1:], **kwargs)
             except (UnsupportedNemesis, MethodVersionNotFound) as exp:
                 skip_reason = str(exp)
                 log_info.update({'subtype': 'skipped', 'skip_reason': skip_reason})

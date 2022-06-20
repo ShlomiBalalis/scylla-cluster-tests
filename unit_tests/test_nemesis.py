@@ -1,5 +1,7 @@
 import inspect
+import pytest
 from collections import namedtuple
+from dataclasses import dataclass, field
 
 import sdcm.utils.cloud_monitor  # pylint: disable=unused-import # import only to avoid cyclic dependency
 from sdcm.nemesis import Nemesis, CategoricalMonkey, SisyphusMonkey, ToggleGcModeMonkey
@@ -11,21 +13,55 @@ from sdcm.cluster_aws import ScyllaAWSCluster
 from sdcm.cluster_docker import ScyllaDockerCluster
 
 
-Cluster = namedtuple("Cluster", ['params'])
+PARAMS = dict(nemesis_interval=1, nemesis_filter_seeds=False)
 
 
-# pylint: disable=too-few-public-methods
+@dataclass
+class Node:
+    running_nemesis = None
+    public_ip_address: str = '127.0.0.1'
+    name: str = 'Node1'
+
+    @property
+    def scylla_shards(self):
+        return 8
+
+
+@dataclass
+class Cluster:
+    nodes: list
+    params: dict = field(default_factory=lambda: PARAMS)
+
+    def check_cluster_health(self):
+        pass
+
+
+@dataclass
 class FakeTester:
+    params: dict = field(default_factory=lambda: PARAMS)
+    loaders: list = field(default_factory=list)
+    db_cluster: Cluster = field(default_factory=lambda: Cluster(nodes=[Node(), Node()]))
+    monitors: list = field(default_factory=list)
 
-    def __init__(self):
-        self.params = dict(nemesis_interval=1, nemesis_filter_seeds=False, nemesis_exclude_disabled=True,
-                           nemesis_selector=None)
-        self.loaders, self.monitors = {}, {}
-        self.db_cluster = Cluster(params=self.params)
+    def create_stats(self):
+        pass
+
+    def update(self, *args, **kwargs):
+        pass
+
+    def get_scylla_versions(self):
+        pass
+
+    def get_test_details(self):
+        pass
+
+    def id(self):  # pylint: disable=invalid-name,no-self-use
+        return 0
+>>>>>>> fix(nemesis): move wrapping code from __new__ to __init__
 
 
 class FakeNemesis(Nemesis):
-    def __new__(cls, tester_obj, termination_event, *args):
+    def __new__(cls, tester_obj, termination_event, *args):  # pylint: disable=unused-argument
         return object.__new__(cls)
 
     def disrupt(self):
@@ -34,11 +70,6 @@ class FakeNemesis(Nemesis):
 
 class ChaosMonkey(FakeNemesis):
     ...
-
-
-class FakeSisyphusMonkey(SisyphusMonkey):
-    def __new__(cls, tester_obj, termination_event, *args):
-        return object.__new__(cls)
 
 
 class FakeCategoricalMonkey(CategoricalMonkey):
@@ -71,6 +102,7 @@ class AddRemoveDCMonkey(FakeNemesis):
         self.disrupt_add_remove_dc()
 
 
+@pytest.mark.usefixtures('events')
 def test_list_nemesis_of_added_disrupt_methods():
     nemesis = ChaosMonkey(FakeTester(), None)
     assert 'disrupt_add_remove_dc' in nemesis.get_list_of_methods_by_flags(disruptive=False)
