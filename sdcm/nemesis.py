@@ -3998,6 +3998,13 @@ class ToggleTableIcsMonkey(Nemesis):
         self.disrupt_toggle_table_ics()
 
 
+class MgmtActions(Nemesis):
+    def disrupt(self):
+        self.call_random_disrupt_method(['disrupt_mgmt_backup',
+                                         'disrupt_mgmt_backup_specific_keyspaces',
+                                         'disrupt_mgmt_repair_cli'])
+
+
 class MgmtBackup(Nemesis):
     disruptive = False
     limited = True
