@@ -11,3 +11,4 @@ user_prefix: 'google-snitch'
 
 endpoint_snitch: 'GoogleCloudSnitch'
 use_preinstalled_scylla: true
+use_mgmt: false
