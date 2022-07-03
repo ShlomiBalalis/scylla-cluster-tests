@@ -11,5 +11,6 @@ n_monitor_nodes: 1
 user_prefix: 'google-snitch'
 
 endpoint_snitch: 'GoogleCloudSnitch'
+intra_node_comm_public: true
 use_preinstalled_scylla: true
 use_mgmt: false
