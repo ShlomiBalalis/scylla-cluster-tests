@@ -546,7 +546,7 @@ class SlaPerUserEmailReporter(LongevityEmailReporter):
 def build_reporter(name: str,
                    email_recipients: Sequence[str] = (),
                    logdir: Optional[str] = None) -> Optional[BaseEmailReporter]:
-    # pylint: disable=too-many-return-statements
+    # pylint: disable=too-many-return-statements,too-many-branches
     if "Gemini" in name:
         return GeminiEmailReporter(email_recipients=email_recipients, logdir=logdir)
     elif "Longevity" in name:
@@ -569,6 +569,8 @@ def build_reporter(name: str,
         return JepsenEmailReporter(email_recipients=email_recipients, logdir=logdir)
     elif "Functional" in name:
         return FunctionalEmailReporter(email_recipients=email_recipients, logdir=logdir)
+    elif "Snitch" in name:
+        return BaseEmailReporter(email_recipients=email_recipients, logdir=logdir)
     else:
         return None
 
