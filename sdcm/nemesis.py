@@ -4230,6 +4230,14 @@ class ToggleGcModeMonkey(Nemesis):
         self.disrupt_toggle_table_gc_mode()
 
 
+class AllBackups(Nemesis):
+    disruptive = False
+    limited = True
+
+    def disrupt(self):
+        self.call_random_disrupt_method(["disrupt_mgmt_backup", "disrupt_mgmt_backup_specific_keyspaces"])
+
+
 class MgmtBackup(Nemesis):
     disruptive = False
     limited = True
