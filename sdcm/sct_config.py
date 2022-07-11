@@ -1381,7 +1381,7 @@ class SCTConfiguration(dict):
     }
 
     multi_region_params = [
-        'region_name', 'n_db_nodes', 'ami_id_db_scylla', 'ami_id_loader', 'gce_datacenter'
+        'region_name', 'n_db_nodes', 'ami_id_db_scylla', 'ami_id_loader'
     ]
 
     stress_cmd_params = [
