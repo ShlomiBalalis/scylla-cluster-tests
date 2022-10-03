@@ -149,7 +149,8 @@ def teardown_on_exception(method):
             TestFrameworkEvent(
                 source=args[0].__class__.__name__,
                 source_method='SetUp',
-                exception=exc
+                exception=exc,
+                trace=exc.__traceback__
             ).publish_or_dump()
             TEST_LOG.exception("Exception in %s. Will call tearDown", method.__name__)
             args[0].tearDown()
