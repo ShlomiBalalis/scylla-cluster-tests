@@ -4972,6 +4972,7 @@ class BaseMonitorSet:  # pylint: disable=too-many-public-methods,too-many-instan
                 add-apt-repository -y ppa:deadsnakes/ppa
                 apt-get update
                 apt-get install -y python3.6 python3.6-dev
+                apt-get install python3-distutils
                 apt-get install -y python-setuptools unzip wget
                 apt install -y python3-pip
                 python3.6 -m pip install --upgrade pip
