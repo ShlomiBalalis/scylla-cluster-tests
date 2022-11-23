@@ -381,24 +381,9 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         4) test_client_encryption
         """
         self.generate_load_and_wait_for_results()
-        with self.subTest('Basic Backup Test'):
-            self.test_basic_backup()
-        with self.subTest('Repair Multiple Keyspace Types'):
-            self.test_repair_multiple_keyspace_types()
-        with self.subTest('Mgmt Cluster CRUD'):
-            self.test_mgmt_cluster_crud()
-        with self.subTest('Mgmt cluster Health Check'):
-            self.test_mgmt_cluster_healthcheck()
-        # test_healthcheck_change_max_timeout requires a multi dc run. And since ipv6 cannot run in multi dc, this test
-        # function will be skipped for ipv6 runs.
         if self.db_cluster.nodes[0].test_config.IP_SSH_CONNECTIONS != "ipv6":
             with self.subTest('Basic test healthcheck change max timeout'):
                 self.test_healthcheck_change_max_timeout()
-        with self.subTest('Basic test suspend and resume'):
-            self.test_suspend_and_resume()
-        with self.subTest('Client Encryption'):
-            # Since this test activates encryption, it has to be the last test in the sanity
-            self.test_client_encryption()
 
     def test_repair_intensity_feature_on_multiple_node(self):
         self._repair_intensity_feature(fault_multiple_nodes=True)
@@ -748,26 +733,22 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         mgr_cluster = manager_tool.get_cluster(cluster_name=self.CLUSTER_NAME) or manager_tool.add_cluster(
             name=self.CLUSTER_NAME, db_cluster=self.db_cluster, auth_token=self.monitors.mgmt_auth_token)
 
-        try:
-            reconfigure_scylla_manager(manager_node=manager_node, logger=self.log,
-                                       values_to_update=[{"healthcheck": {"max_timeout": "20ms"}}])
-            sleep = 40
-            self.log.debug('Sleep %s seconds, waiting for health-check task to rerun', sleep)
-            time.sleep(sleep)
-            dict_host_health = mgr_cluster.get_hosts_health()
-            for node in nodes_from_distant_dc:
-                assert dict_host_health[node.ip_address].status == HostStatus.TIMEOUT, \
-                    f'After setting "max_timeout" to a value shorter than the latency of the distant dc nodes, ' \
-                    f'the healthcheck status of {node.ip_address} was not {HostStatus.TIMEOUT} as expected, but ' \
-                    f'instead it was {dict_host_health[node.ip_address].status}'
-            for node in nodes_from_local_dc:
-                assert dict_host_health[node.ip_address].status == HostStatus.UP, \
-                    f'After setting "max_timeout" to a value longer than the latency of the local dc nodes, ' \
-                    f'the healthcheck status of {node.ip_address} is not {HostStatus.UP} as expected, but ' \
-                    f'instead it was {dict_host_health[node.ip_address].status}'
-        finally:
-            reconfigure_scylla_manager(manager_node=manager_node, logger=self.log, values_to_remove=['healthcheck'])
-            mgr_cluster.delete()  # remove cluster at the end of the test
+        reconfigure_scylla_manager(manager_node=manager_node, logger=self.log,
+                                   values_to_update=[{"healthcheck": {"max_timeout": "20ms"}}])
+        sleep = 40
+        self.log.debug('Sleep %s seconds, waiting for health-check task to rerun', sleep)
+        time.sleep(sleep)
+        dict_host_health = mgr_cluster.get_hosts_health()
+        for node in nodes_from_distant_dc:
+            assert dict_host_health[node.ip_address].status == HostStatus.TIMEOUT, \
+                f'After setting "max_timeout" to a value shorter than the latency of the distant dc nodes, ' \
+                f'the healthcheck status of {node.ip_address} was not {HostStatus.TIMEOUT} as expected, but ' \
+                f'instead it was {dict_host_health[node.ip_address].status}'
+        for node in nodes_from_local_dc:
+            assert dict_host_health[node.ip_address].status == HostStatus.UP, \
+                f'After setting "max_timeout" to a value longer than the latency of the local dc nodes, ' \
+                f'the healthcheck status of {node.ip_address} is not {HostStatus.UP} as expected, but ' \
+                f'instead it was {dict_host_health[node.ip_address].status}'
         self.log.info('finishing test_healthcheck_change_max_timeout')
 
     def test_manager_upgrade(self):
