@@ -2203,6 +2203,7 @@ class BaseNode(AutoSshContainerMixin, WebDriverContainerMixin):  # pylint: disab
     def upgrade_mgmt(self, scylla_mgmt_address, start_manager_after_upgrade=True):
         self.log.debug("Upgrade scylla-manager via repo: %s", scylla_mgmt_address)
         self.download_scylla_manager_repo(scylla_mgmt_address)
+        self.remoter.sudo("yum clean all")
         if self.distro.is_rhel_like:
             self.remoter.sudo("yum update scylla-manager-server scylla-manager-client -y")
         elif self.distro.is_sles:
