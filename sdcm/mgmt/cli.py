@@ -493,7 +493,7 @@ class ManagerCluster(ScyllaManagerBase):
         self.id = value
 
     def create_backup_task(self, dc_list=None,  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches
-                           dry_run=None, interval=None, keyspace_list=None, cron=None,
+                           dry_run=None, keyspace_list=None, cron=None,
                            location_list=None, num_retries=None, rate_limit_list=None, retention=None, show_tables=None,
                            snapshot_parallel_list=None, start_date=None, upload_parallel_list=None, legacy_args=None):
         cmd = "backup -c {}".format(self.id)
@@ -503,8 +503,6 @@ class ManagerCluster(ScyllaManagerBase):
             cmd += " --dc {} ".format(dc_names)
         if dry_run is not None:
             cmd += " --dry-run"
-        if interval is not None:
-            cmd += " --interval {}".format(interval)
         if keyspace_list is not None:
             keyspaces_names = ','.join(keyspace_list)
             cmd += " --keyspace {} ".format(keyspaces_names)
@@ -525,9 +523,6 @@ class ManagerCluster(ScyllaManagerBase):
             cmd += " --snapshot-parallel {} ".format(snapshot_parallel_string)
         if start_date is not None:
             cmd += " --start-date {} ".format(start_date)
-        # Since currently we support both manager 2.6 and 3.0, I left the start-date parameter in,
-        # even though it's deprecated in 3.0
-        # TODO: remove start-date and interval once 2.6 is no longer supported
         if cron is not None:
             cmd += " --cron {} ".format(" ".join(cron))
         if upload_parallel_list is not None:
@@ -542,23 +537,14 @@ class ManagerCluster(ScyllaManagerBase):
         return BackupTask(task_id=task_id, cluster_id=self.id, manager_node=self.manager_node)
 
     def create_repair_task(self, dc_list=None,  # pylint: disable=too-many-arguments
-                           keyspace=None, interval=None, num_retries=None, fail_fast=None,
+                           keyspace=None, num_retries=None, fail_fast=None,
                            intensity=None, parallel=None, cron=None, start_date=None):
-        # the interval string:
-        # Amount of time after which a successfully completed task would be run again. Supported time units include:
-        #
-        # d - days,
-        # h - hours,
-        # m - minutes,
-        # s - seconds.
         cmd = "repair -c {}".format(self.id)
         if dc_list is not None:
             dc_names = ','.join(dc_list)
             cmd += " --dc {} ".format(dc_names)
         if keyspace is not None:
             cmd += " --keyspace {} ".format(keyspace)
-        if interval is not None:
-            cmd += " --interval {}".format(interval)
         if num_retries is not None:
             cmd += " --num-retries {}".format(num_retries)
         if fail_fast is not None:
