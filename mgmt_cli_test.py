@@ -37,7 +37,7 @@ from sdcm.mgmt.common import reconfigure_scylla_manager
 from sdcm.remote import shell_script_cmd
 from sdcm.tester import ClusterTester
 from sdcm.cluster import TestConfig
-from sdcm.nemesis import MgmtRepair
+from sdcm.nemesis import MgmtRepair, NodeTerminateAndReplace
 from sdcm.utils.common import reach_enospc_on_node, clean_enospc_on_node
 from sdcm.utils.loader_utils import LoaderUtilsMixin
 from sdcm.sct_events.system import InfoEvent
@@ -183,9 +183,9 @@ class BackupFunctionsMixIn:
         self.restore_backup(mgr_cluster=mgr_cluster, snapshot_tag=snapshot_tag,
                             keyspace_and_table_list=keyspace_and_table_list)
 
-    def restore_backup_using_restore_task(self, mgr_cluster, backup_task, timeout):
+    def restore_backup_using_restore_task(self, mgr_cluster, backup_task, timeout, only_data=True):
         snapshot_tag = backup_task.get_snapshot_tag()
-        restore_task = mgr_cluster.create_restore_task(only_data=True, location_list=self.locations,
+        restore_task = mgr_cluster.create_restore_task(only_data=only_data, location_list=self.locations,
                                                        snapshot_tag=snapshot_tag)
         restore_task.wait_and_get_final_status(step=30, timeout=timeout)
         assert restore_task.status == TaskStatus.DONE, f"Restoration of {snapshot_tag} has failed!"
@@ -463,10 +463,24 @@ class MgmtCliTest(BackupFunctionsMixIn, LoaderUtilsMixin, ClusterTester):
         for stress in stress_queue:
             self.verify_stress_thread(cs_thread_pool=stress)
 
-    def test_backup_and_restore_with_task(self):
+    def test_backup_replace_node_and_restore_schema_with_task(self):
         self.run_prepare_write_cmd()
-        with self.subTest('Basic Backup Test'):
-            self.test_basic_backup(restore_type="restore_task")
+        manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+        mgr_cluster = manager_tool.get_cluster(cluster_name=self.CLUSTER_NAME) \
+            or manager_tool.add_cluster(name=self.CLUSTER_NAME, db_cluster=self.db_cluster,
+                                        auth_token=self.monitors.mgmt_auth_token)
+        backup_task = mgr_cluster.create_backup_task(location_list=self.locations)
+        backup_task_status = backup_task.wait_and_get_final_status(timeout=10000)
+        assert backup_task_status == TaskStatus.DONE, \
+            f"Backup task ended in {backup_task_status} instead of {TaskStatus.DONE}"
+        self.db_cluster.add_nemesis(NodeTerminateAndReplace, tester_obj=self)
+        self.db_cluster.start_nemesis(interval=15, cycles_count=1)
+        self.db_cluster.stop_nemesis(timeout=1500)
+        with self.db_cluster.cql_connection_patient(self.db_cluster.nodes[0]) as session:
+            session.execute("DROP KEYSPACE keyspace1")
+        self.restore_backup_using_restore_task(mgr_cluster=mgr_cluster, backup_task=backup_task, timeout=14000,
+                                               only_data=False)
+        self.verify_backup_success(mgr_cluster=mgr_cluster, backup_task=backup_task, restore_type="restore_task")
         self.run_read_stress()
 
     def test_backup_feature(self):
