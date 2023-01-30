@@ -37,7 +37,7 @@ from sdcm.mgmt.common import reconfigure_scylla_manager
 from sdcm.remote import shell_script_cmd
 from sdcm.tester import ClusterTester
 from sdcm.cluster import TestConfig
-from sdcm.nemesis import MgmtRepair, NodeTerminateAndReplace
+from sdcm.nemesis import MgmtRepair  # , NodeTerminateAndReplace
 from sdcm.utils.common import reach_enospc_on_node, clean_enospc_on_node
 from sdcm.utils.loader_utils import LoaderUtilsMixin
 from sdcm.sct_events.system import InfoEvent
@@ -473,7 +473,7 @@ class MgmtCliTest(BackupFunctionsMixIn, LoaderUtilsMixin, ClusterTester):
         backup_task_status = backup_task.wait_and_get_final_status(timeout=10000)
         assert backup_task_status == TaskStatus.DONE, \
             f"Backup task ended in {backup_task_status} instead of {TaskStatus.DONE}"
-        self.db_cluster.add_nemesis(NodeTerminateAndReplace, tester_obj=self)
+        self.db_cluster.add_nemesis(self.get_nemesis_class(), tester_obj=self)
         self.db_cluster.start_nemesis(interval=15, cycles_count=1)
         self.db_cluster.stop_nemesis(timeout=1500)
         with self.db_cluster.cql_connection_patient(self.db_cluster.nodes[0]) as session:
