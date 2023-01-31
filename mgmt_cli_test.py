@@ -471,6 +471,7 @@ class MgmtCliTest(BackupFunctionsMixIn, LoaderUtilsMixin, ClusterTester):
         for node in self.db_cluster.nodes:
             node.run_nodetool("repair")  # After data restoration, you should repair every node
 
+<<<<<<< HEAD
     def test_backup_and_restore_only_data(self):
         self.run_prepare_write_cmd()
         manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
@@ -485,6 +486,8 @@ class MgmtCliTest(BackupFunctionsMixIn, LoaderUtilsMixin, ClusterTester):
         self.restore_data(mgr_cluster=mgr_cluster, backup_task=backup_task, timeout=20000)
         self.run_read_stress()
 
+=======
+>>>>>>> test(manager): added a large 2TB backup and restore test case
     def test_backup_replace_node_and_restore_schema_with_task(self):
         self.run_prepare_write_cmd()
         manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
