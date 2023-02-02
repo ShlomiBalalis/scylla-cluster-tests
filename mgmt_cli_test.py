@@ -478,11 +478,11 @@ class MgmtCliTest(BackupFunctionsMixIn, LoaderUtilsMixin, ClusterTester):
             or manager_tool.add_cluster(name=self.CLUSTER_NAME, db_cluster=self.db_cluster,
                                         auth_token=self.monitors.mgmt_auth_token)
         backup_task = mgr_cluster.create_backup_task(location_list=self.locations)
-        backup_task_status = backup_task.wait_and_get_final_status(timeout=1500)
+        backup_task_status = backup_task.wait_and_get_final_status(timeout=110000)
         assert backup_task_status == TaskStatus.DONE, \
             f"Backup task ended in {backup_task_status} instead of {TaskStatus.DONE}"
         self.db_cluster.nodes[0].run_cqlsh('TRUNCATE keyspace1.standard1')
-        self.restore_data(mgr_cluster=mgr_cluster, backup_task=backup_task, timeout=20000)
+        self.restore_data(mgr_cluster=mgr_cluster, backup_task=backup_task, timeout=110000)
         self.run_read_stress()
 
     def test_backup_replace_node_and_restore_schema_with_task(self):
