@@ -1,4 +1,4 @@
-test_duration: 1340
+test_duration: 4320
 
 prepare_write_cmd: ["cassandra-stress write cl=ONE n=1342177280 -schema 'replication(factor=1) compaction(strategy=LeveledCompactionStrategy)' -mode cql3 native  -rate threads=50 -col 'size=FIXED(64) n=FIXED(16)' -pop seq=1..1342177280",
                     "cassandra-stress write cl=ONE n=1342177280 -schema 'replication(factor=1) compaction(strategy=LeveledCompactionStrategy)' -mode cql3 native  -rate threads=50 -col 'size=FIXED(64) n=FIXED(16)' -pop seq=1342177281..2684354560",
