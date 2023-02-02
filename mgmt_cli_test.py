@@ -486,6 +486,10 @@ class MgmtCliTest(BackupFunctionsMixIn, LoaderUtilsMixin, ClusterTester):
         self.run_read_stress()
 
     def test_backup_replace_node_and_restore_schema_with_task(self):
+        def nodetool_tablestats_for_all():
+            self.log.info(msg="RUNNING tablestats on all nodes")
+            for node in self.db_cluster.nodes:
+                node.run_nodetool("tablestats")
         self.run_prepare_write_cmd()
         manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
         mgr_cluster = manager_tool.get_cluster(cluster_name=self.CLUSTER_NAME) \
@@ -502,8 +506,11 @@ class MgmtCliTest(BackupFunctionsMixIn, LoaderUtilsMixin, ClusterTester):
         self.db_cluster.stop_nemesis(timeout=1500)
         with self.db_cluster.cql_connection_patient(self.db_cluster.nodes[0]) as session:
             session.execute("DROP KEYSPACE keyspace1")
+        nodetool_tablestats_for_all()
         self.restore_schema(mgr_cluster=mgr_cluster, backup_task=backup_task, timeout=1000)
+        nodetool_tablestats_for_all()
         self.restore_data(mgr_cluster=mgr_cluster, backup_task=backup_task, timeout=14000)
+        nodetool_tablestats_for_all()
         self.run_read_stress()  # Verifying the backup success using stress
 
     def test_backup_feature(self):
