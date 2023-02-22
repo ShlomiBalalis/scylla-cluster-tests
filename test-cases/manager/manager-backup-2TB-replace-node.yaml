@@ -1,14 +1,14 @@
 test_duration: 1440
 
-prepare_write_cmd: [ "cassandra-stress write cl=QUORUM n=26214400 -schema 'keyspace=100gb_sizetiered replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native  -rate threads=50 -col 'size=FIXED(64) n=FIXED(16)' -pop seq=1..26214400",
-                     "cassandra-stress write cl=QUORUM n=26214400 -schema 'keyspace=100gb_sizetiered replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native  -rate threads=50 -col 'size=FIXED(64) n=FIXED(16)' -pop seq=26214401..52428800",
-                     "cassandra-stress write cl=QUORUM n=26214400 -schema 'keyspace=100gb_sizetiered replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native  -rate threads=50 -col 'size=FIXED(64) n=FIXED(16)' -pop seq=52428801..78643200",
-                     "cassandra-stress write cl=QUORUM n=26214400 -schema 'keyspace=100gb_sizetiered replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native  -rate threads=50 -col 'size=FIXED(64) n=FIXED(16)' -pop seq=78643201..104857600"]
+prepare_write_cmd: [ "cassandra-stress write cl=QUORUM n=2621440 -schema 'keyspace=10gb_sizetiered replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native  -rate threads=50 -col 'size=FIXED(64) n=FIXED(16)' -pop seq=1..2621440",
+                     "cassandra-stress write cl=QUORUM n=2621440 -schema 'keyspace=10gb_sizetiered replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native  -rate threads=50 -col 'size=FIXED(64) n=FIXED(16)' -pop seq=2621441..5242880",
+                     "cassandra-stress write cl=QUORUM n=2621440 -schema 'keyspace=10gb_sizetiered replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native  -rate threads=50 -col 'size=FIXED(64) n=FIXED(16)' -pop seq=5242881..7864320",
+                     "cassandra-stress write cl=QUORUM n=2621440 -schema 'keyspace=10gb_sizetiered replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native  -rate threads=50 -col 'size=FIXED(64) n=FIXED(16)' -pop seq=7864321..10485760"]
 
-stress_read_cmd: ["cassandra-stress read cl=QUORUM n=26214400 -schema 'keyspace=100gb_sizetiered replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native  -rate threads=50 -col 'size=FIXED(64) n=FIXED(16)' -pop seq=1..26214400",
-                  "cassandra-stress read cl=QUORUM n=26214400 -schema 'keyspace=100gb_sizetiered replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native  -rate threads=50 -col 'size=FIXED(64) n=FIXED(16)' -pop seq=26214401..52428800",
-                  "cassandra-stress read cl=QUORUM n=26214400 -schema 'keyspace=100gb_sizetiered replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native  -rate threads=50 -col 'size=FIXED(64) n=FIXED(16)' -pop seq=52428801..78643200",
-                  "cassandra-stress read cl=QUORUM n=26214400 -schema 'keyspace=100gb_sizetiered replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native  -rate threads=50 -col 'size=FIXED(64) n=FIXED(16)' -pop seq=78643201..104857600"]
+stress_read_cmd: ["cassandra-stress read cl=QUORUM n=2621440 -schema 'keyspace=10gb_sizetiered replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native  -rate threads=50 -col 'size=FIXED(64) n=FIXED(16)' -pop seq=1..2621440",
+                  "cassandra-stress read cl=QUORUM n=2621440 -schema 'keyspace=10gb_sizetiered replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native  -rate threads=50 -col 'size=FIXED(64) n=FIXED(16)' -pop seq=2621441..5242880",
+                  "cassandra-stress read cl=QUORUM n=2621440 -schema 'keyspace=10gb_sizetiered replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native  -rate threads=50 -col 'size=FIXED(64) n=FIXED(16)' -pop seq=5242881..7864320",
+                  "cassandra-stress read cl=QUORUM n=2621440 -schema 'keyspace=10gb_sizetiered replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native  -rate threads=50 -col 'size=FIXED(64) n=FIXED(16)' -pop seq=7864321..10485760"]
 
 round_robin: true
 
