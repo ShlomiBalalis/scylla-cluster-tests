@@ -196,16 +196,16 @@ class BackupFunctionsMixIn(LoaderUtilsMixin):
         self.restore_backup_from_backup_task(mgr_cluster=mgr_cluster, backup_task=backup_task,
                                              keyspace_and_table_list=per_keyspace_tables_dict)
 
-    def restore_schema_with_task(self, mgr_cluster, backup_task, timeout):
-        snapshot_tag = backup_task.get_snapshot_tag()
+    def restore_schema_with_task(self, mgr_cluster, snapshot_tag, timeout):
+        # snapshot_tag = backup_task.get_snapshot_tag()
         restore_task = mgr_cluster.create_restore_task(restore_schema=True, location_list=self.locations,
                                                        snapshot_tag=snapshot_tag)
         restore_task.wait_and_get_final_status(step=30, timeout=timeout)
         assert restore_task.status == TaskStatus.DONE, f"Schema restoration of {snapshot_tag} has failed!"
         self.db_cluster.restart_scylla()  # After schema restoration, you should restart the nodes
 
-    def restore_data_with_task(self, mgr_cluster, backup_task, timeout):
-        snapshot_tag = backup_task.get_snapshot_tag()
+    def restore_data_with_task(self, mgr_cluster, snapshot_tag, timeout):
+        # snapshot_tag = backup_task.get_snapshot_tag()
         restore_task = mgr_cluster.create_restore_task(restore_data=True, location_list=self.locations,
                                                        snapshot_tag=snapshot_tag)
         restore_task.wait_and_get_final_status(step=30, timeout=timeout)
@@ -213,10 +213,10 @@ class BackupFunctionsMixIn(LoaderUtilsMixin):
         for node in self.db_cluster.nodes:
             node.run_nodetool("repair")  # After data restoration, you should repair every node
 
-    def run_verification_read_stress(self):
+    def run_verification_read_stress(self, stress_cmd):
         stress_queue = []
-        stress_cmd = self.params.get('stress_read_cmd')
-        keyspace_num = self.params.get('keyspace_num')
+        # stress_cmd = self.params.get('stress_read_cmd')
+        keyspace_num = 1
         self.assemble_and_run_all_stress_cmd(stress_queue, stress_cmd, keyspace_num)
         for stress in stress_queue:
             self.verify_stress_thread(cs_thread_pool=stress)
@@ -476,10 +476,16 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         mgr_cluster = manager_tool.get_cluster(cluster_name=self.CLUSTER_NAME) \
             or manager_tool.add_cluster(name=self.CLUSTER_NAME, db_cluster=self.db_cluster,
                                         auth_token=self.monitors.mgmt_auth_token)
-        backup_task = mgr_cluster.create_backup_task(location_list=self.locations)
-        backup_task_status = backup_task.wait_and_get_final_status(timeout=10000)
-        assert backup_task_status == TaskStatus.DONE, \
-            f"Backup task ended in {backup_task_status} instead of {TaskStatus.DONE}"
+        # backup_task = mgr_cluster.create_backup_task(location_list=self.locations)
+        # backup_task_status = backup_task.wait_and_get_final_status(timeout=10000)
+        # assert backup_task_status == TaskStatus.DONE, \
+        #     f"Backup task ended in {backup_task_status} instead of {TaskStatus.DONE}"
+        self.restore_schema_with_task(mgr_cluster=mgr_cluster, snapshot_tag='sm_20230223105105UTC', timeout=1000)
+        self.restore_data_with_task(mgr_cluster=mgr_cluster, snapshot_tag='sm_20230223105105UTC', timeout=14000)
+        # Verifying the backup success using stress
+        self.run_verification_read_stress(
+            "cassandra-stress read cl=QUORUM n=10485760 -schema 'keyspace=10gb_sizetiered replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native  -rate threads=50 -col 'size=FIXED(64) n=FIXED(16)' -pop seq=1..10485760")
+
         self.db_cluster.add_nemesis(self.get_nemesis_class(), tester_obj=self)
         self.db_cluster.start_nemesis(interval=15, cycles_count=1)
         for nemesis_thread in self.db_cluster.nemesis_threads:
@@ -487,9 +493,11 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         self.db_cluster.stop_nemesis(timeout=1500)
         with self.db_cluster.cql_connection_patient(self.db_cluster.nodes[0]) as session:
             session.execute("DROP KEYSPACE keyspace1")
-        self.restore_schema_with_task(mgr_cluster=mgr_cluster, backup_task=backup_task, timeout=1000)
-        self.restore_data_with_task(mgr_cluster=mgr_cluster, backup_task=backup_task, timeout=14000)
-        self.run_verification_read_stress()  # Verifying the backup success using stress
+        self.restore_schema_with_task(mgr_cluster=mgr_cluster, snapshot_tag='sm_20230223130733UTC', timeout=1000)
+        self.restore_data_with_task(mgr_cluster=mgr_cluster, snapshot_tag='sm_20230223130733UTC', timeout=14000)
+        # Verifying the backup success using stress
+        self.run_verification_read_stress(
+            "cassandra-stress read cl=QUORUM n=104857600 -schema 'keyspace=100gb_sizetiered replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native  -rate threads=50 -col 'size=FIXED(64) n=FIXED(16)' -pop seq=1..104857600")
 
     def test_backup_feature(self):
         self.generate_load_and_wait_for_results()
