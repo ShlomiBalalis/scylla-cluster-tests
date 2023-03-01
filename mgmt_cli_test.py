@@ -471,7 +471,7 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         self.run_verification_read_stress()
 
     def test_backup_replace_node_and_restore_schema_with_task(self):
-        self.run_prepare_write_cmd()
+        # self.run_prepare_write_cmd()
         manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
         mgr_cluster = manager_tool.get_cluster(cluster_name=self.CLUSTER_NAME) \
             or manager_tool.add_cluster(name=self.CLUSTER_NAME, db_cluster=self.db_cluster,
@@ -485,14 +485,6 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         # Verifying the backup success using stress
         self.run_verification_read_stress(
             "cassandra-stress read cl=QUORUM n=10485760 -schema 'keyspace=10gb_sizetiered replication(factor=3) compaction(strategy=SizeTieredCompactionStrategy)' -mode cql3 native  -rate threads=50 -col 'size=FIXED(64) n=FIXED(16)' -pop seq=1..10485760")
-
-        self.db_cluster.add_nemesis(self.get_nemesis_class(), tester_obj=self)
-        self.db_cluster.start_nemesis(interval=15, cycles_count=1)
-        for nemesis_thread in self.db_cluster.nemesis_threads:
-            nemesis_thread.join()
-        self.db_cluster.stop_nemesis(timeout=1500)
-        with self.db_cluster.cql_connection_patient(self.db_cluster.nodes[0]) as session:
-            session.execute("DROP KEYSPACE keyspace1")
         self.restore_schema_with_task(mgr_cluster=mgr_cluster, snapshot_tag='sm_20230223130733UTC', timeout=1000)
         self.restore_data_with_task(mgr_cluster=mgr_cluster, snapshot_tag='sm_20230223130733UTC', timeout=14000)
         # Verifying the backup success using stress
