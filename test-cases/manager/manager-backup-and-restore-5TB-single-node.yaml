@@ -15,6 +15,9 @@ round_robin: true
 instance_type_db: 'i3en.6xlarge'
 instance_type_loader: 'c5.2xlarge'
 
+gce_instance_type_db: 'n1-highmem-32'
+gce_instance_type_loader: 'e2-standard-16'
+
 region_name: us-east-1
 n_db_nodes: 1
 n_loaders: 4
