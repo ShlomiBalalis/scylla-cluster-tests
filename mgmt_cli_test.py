@@ -16,6 +16,7 @@
 
 # pylint: disable=too-many-lines
 import random
+from concurrent.futures.thread import ThreadPoolExecutor
 from pathlib import Path
 from functools import cached_property
 import re
@@ -41,6 +42,7 @@ from sdcm.cluster import TestConfig
 from sdcm.nemesis import MgmtRepair
 from sdcm.utils.common import reach_enospc_on_node, clean_enospc_on_node
 from sdcm.utils.loader_utils import LoaderUtilsMixin
+from sdcm.utils.sstable.load_utils import SstableLoadUtils
 from sdcm.sct_events.system import InfoEvent
 from sdcm.sct_events.filters import DbEventsFilter
 from sdcm.sct_events.database import DatabaseLogEvent
@@ -165,19 +167,31 @@ class BackupFunctionsMixIn(LoaderUtilsMixin):
             raise ValueError(f'{backup_bucket_backend=} is not supported')
 
         per_node_backup_file_paths = mgr_cluster.get_backup_files_dict(snapshot_tag)
-        for node in self.db_cluster.nodes:
+        backed_up_node_list = list(per_node_backup_file_paths.keys())
+        keyspace = list(keyspace_and_table_list.keys())[0]
+        table = keyspace_and_table_list[keyspace][0]
+
+        base_node_data_path = Path("/var/lib/scylla/data")
+
+        def _download_files_to_node(node, backed_up_node_id):
             install_dependencies(node=node)
-            node_data_path = Path("/var/lib/scylla/data")
-            node_id = node.host_id
-            for keyspace, tables in keyspace_and_table_list.items():
-                keyspace_path = node_data_path / keyspace
-                for table in tables:
-                    table_id = self.get_table_id(node=node, table_name=table, keyspace_name=keyspace)
-                    table_upload_path = keyspace_path / f"{table}-{table_id}" / "upload"
-                    for file_path in per_node_backup_file_paths[node_id][keyspace][table]:
-                        download(node=node, source=file_path, destination=table_upload_path)
-                    node.remoter.sudo(f"chown scylla:scylla -Rf {table_upload_path}")
-                    node.run_nodetool(f"refresh -- {keyspace} {table}")
+            table_id = self.get_table_id(node=node, table_name=table, keyspace_name=keyspace)
+            table_upload_path = base_node_data_path / keyspace / f"{table}-{table_id}" / "upload"
+            for file_path in per_node_backup_file_paths[backed_up_node_id][keyspace][table]:
+                download(node=node, source=file_path, destination=table_upload_path)
+            node.remoter.sudo(f"chown scylla:scylla -Rf {table_upload_path}")
+            system_log_follower = SstableLoadUtils.run_load_and_stream(node)
+            SstableLoadUtils.validate_load_and_stream_status(node, system_log_follower)
+            return True
+
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            threads = []
+            for i in range(len(backed_up_node_list)):
+                node_id = backed_up_node_list[i]
+                node = self.db_cluster.nodes[i]
+                threads.append(executor.submit(_download_files_to_node, node=node, backed_up_node_id=node_id))
+            results = [thread.result() for thread in threads]
+            self.log.debug("executer results: %s", str(all(results)))
 
     def restore_backup_from_backup_task(self, mgr_cluster, backup_task, keyspace_and_table_list):
         snapshot_tag = backup_task.get_snapshot_tag()
@@ -536,6 +550,15 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
                     # can use this function to populate tables better?
                     # self.populate_data_parallel()
         return table_name
+
+    def test_restore_manually(self):
+        manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+        mgr_cluster = manager_tool.get_cluster(cluster_name=self.CLUSTER_NAME) \
+            or manager_tool.add_cluster(name=self.CLUSTER_NAME, db_cluster=self.db_cluster,
+                                        auth_token=self.monitors.mgmt_auth_token)
+        self.restore_backup(mgr_cluster=mgr_cluster, snapshot_tag="sm_20230223105105UTC",
+                            keyspace_and_table_list={"10gb_sizetiered": ['standard1']})
+        self.run_verification_read_stress()
 
     def test_basic_backup(self):
         self.log.info('starting test_basic_backup')

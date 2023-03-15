@@ -651,7 +651,7 @@ class ManagerCluster(ScyllaManagerBase):
             raise ScyllaManagerError("Unknown failure for sctool {} command".format(cmd))
 
     def get_backup_files_dict(self, snapshot_tag):
-        command = f" -c {self.id} backup files --snapshot-tag {snapshot_tag}"
+        command = f" -c {self.id} backup files --snapshot-tag {snapshot_tag} --location s3:manager-backup-tests-permanent-snapshots-us-east-1"
         # The sctool backup files command prints the s3 paths of all of the files that are required to restore the
         # cluster from the backup
         snapshot_files = self.sctool.run(command)
