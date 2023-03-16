@@ -123,7 +123,7 @@ class BackupFunctionsMixIn(LoaderUtilsMixin):
 
     @staticmethod
     def download_from_s3(node, source, destination):
-        node.remoter.sudo(f"aws s3 cp '{source}' '{destination}'")
+        node.remoter.sudo(f"aws s3 cp --recursive '{source}' '{destination}'")
 
     @staticmethod
     def download_from_gs(node, source, destination):
@@ -166,30 +166,34 @@ class BackupFunctionsMixIn(LoaderUtilsMixin):
         else:
             raise ValueError(f'{backup_bucket_backend=} is not supported')
 
-        per_node_backup_file_paths = mgr_cluster.get_backup_files_dict(snapshot_tag)
-        backed_up_node_list = list(per_node_backup_file_paths.keys())
+        # per_node_backup_file_paths = mgr_cluster.get_backup_files_dict(snapshot_tag)
+        # backed_up_node_list = list(per_node_backup_file_paths.keys())
+        backed_up_node_paths = \
+            ['backup/sst/cluster/c0cbe002-f5ff-4f82-8844-0aaff738024a/dc/us-east/node/a3f3d46e-2d46-4004-9be7-6bf91e79a6b3/',
+             'backup/sst/cluster/c0cbe002-f5ff-4f82-8844-0aaff738024a/dc/us-east/node/bfb60b07-a7ff-453a-bd54-60f00f7f98f7/',
+             'backup/sst/cluster/c0cbe002-f5ff-4f82-8844-0aaff738024a/dc/us-east/node/cd0c8a58-e2aa-4ed0-9734-69e8b528faa8/']
         keyspace = list(keyspace_and_table_list.keys())[0]
         table = keyspace_and_table_list[keyspace][0]
 
         base_node_data_path = Path("/var/lib/scylla/data")
 
-        def _download_files_to_node(node, backed_up_node_id):
-            install_dependencies(node=node)
-            table_id = self.get_table_id(node=node, table_name=table, keyspace_name=keyspace)
+        def _download_files_to_node(target_node, s3_path):  # backed_up_node_id):
+            install_dependencies(node=target_node)
+            table_id = self.get_table_id(node=target_node, table_name=table, keyspace_name=keyspace)
             table_upload_path = base_node_data_path / keyspace / f"{table}-{table_id}" / "upload"
-            for file_path in per_node_backup_file_paths[backed_up_node_id][keyspace][table]:
-                download(node=node, source=file_path, destination=table_upload_path)
-            node.remoter.sudo(f"chown scylla:scylla -Rf {table_upload_path}")
-            system_log_follower = SstableLoadUtils.run_load_and_stream(node)
-            SstableLoadUtils.validate_load_and_stream_status(node, system_log_follower)
+            # for file_path in per_node_backup_file_paths[backed_up_node_id][keyspace][table]:
+            download(node=target_node, source=s3_path, destination=table_upload_path)
+            target_node.remoter.sudo(f"chown scylla:scylla -Rf {table_upload_path}")
+            system_log_follower = SstableLoadUtils.run_load_and_stream(target_node)
+            SstableLoadUtils.validate_load_and_stream_status(target_node, system_log_follower)
             return True
 
         with ThreadPoolExecutor(max_workers=3) as executor:
             threads = []
-            for i in range(len(backed_up_node_list)):
-                node_id = backed_up_node_list[i]
+            for i in range(len(backed_up_node_paths)):
+                s3_file_path = backed_up_node_paths[i]
                 node = self.db_cluster.nodes[i]
-                threads.append(executor.submit(_download_files_to_node, node=node, backed_up_node_id=node_id))
+                threads.append(executor.submit(_download_files_to_node, node=node, s3_path=s3_file_path))
             results = [thread.result() for thread in threads]
             self.log.debug("executer results: %s", str(all(results)))
 
@@ -556,6 +560,8 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         mgr_cluster = manager_tool.get_cluster(cluster_name=self.CLUSTER_NAME) \
             or manager_tool.add_cluster(name=self.CLUSTER_NAME, db_cluster=self.db_cluster,
                                         auth_token=self.monitors.mgmt_auth_token)
+        self.restore_backup_with_task(mgr_cluster=mgr_cluster, snapshot_tag="sm_20230223105105UTC",
+                                      timeout=180, restore_schema=True, location_list=["s3:manager-backup-tests-permanent-snapshots-us-east-1"])
         self.restore_backup(mgr_cluster=mgr_cluster, snapshot_tag="sm_20230223105105UTC",
                             keyspace_and_table_list={"10gb_sizetiered": ['standard1']})
         self.run_verification_read_stress()
