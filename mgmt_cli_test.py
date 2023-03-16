@@ -169,9 +169,9 @@ class BackupFunctionsMixIn(LoaderUtilsMixin):
         # per_node_backup_file_paths = mgr_cluster.get_backup_files_dict(snapshot_tag)
         # backed_up_node_list = list(per_node_backup_file_paths.keys())
         backed_up_node_paths = \
-            ['backup/sst/cluster/c0cbe002-f5ff-4f82-8844-0aaff738024a/dc/us-east/node/a3f3d46e-2d46-4004-9be7-6bf91e79a6b3/',
-             'backup/sst/cluster/c0cbe002-f5ff-4f82-8844-0aaff738024a/dc/us-east/node/bfb60b07-a7ff-453a-bd54-60f00f7f98f7/',
-             'backup/sst/cluster/c0cbe002-f5ff-4f82-8844-0aaff738024a/dc/us-east/node/cd0c8a58-e2aa-4ed0-9734-69e8b528faa8/']
+            ['s3://manager-backup-tests-permanent-snapshots-us-east-1/backup/sst/cluster/c0cbe002-f5ff-4f82-8844-0aaff738024a/dc/us-east/node/a3f3d46e-2d46-4004-9be7-6bf91e79a6b3/',
+             's3://manager-backup-tests-permanent-snapshots-us-east-1/backup/sst/cluster/c0cbe002-f5ff-4f82-8844-0aaff738024a/dc/us-east/node/bfb60b07-a7ff-453a-bd54-60f00f7f98f7/',
+             's3://manager-backup-tests-permanent-snapshots-us-east-1/backup/sst/cluster/c0cbe002-f5ff-4f82-8844-0aaff738024a/dc/us-east/node/cd0c8a58-e2aa-4ed0-9734-69e8b528faa8/']
         keyspace = list(keyspace_and_table_list.keys())[0]
         table = keyspace_and_table_list[keyspace][0]
 
@@ -184,7 +184,7 @@ class BackupFunctionsMixIn(LoaderUtilsMixin):
             # for file_path in per_node_backup_file_paths[backed_up_node_id][keyspace][table]:
             download(node=target_node, source=s3_path, destination=table_upload_path)
             target_node.remoter.sudo(f"chown scylla:scylla -Rf {table_upload_path}")
-            system_log_follower = SstableLoadUtils.run_load_and_stream(target_node)
+            system_log_follower = SstableLoadUtils.run_load_and_stream(target_node, keyspace_name="10gb_sizetiered")
             SstableLoadUtils.validate_load_and_stream_status(target_node, system_log_follower)
             return True
 
@@ -193,7 +193,7 @@ class BackupFunctionsMixIn(LoaderUtilsMixin):
             for i in range(len(backed_up_node_paths)):
                 s3_file_path = backed_up_node_paths[i]
                 node = self.db_cluster.nodes[i]
-                threads.append(executor.submit(_download_files_to_node, node=node, s3_path=s3_file_path))
+                threads.append(executor.submit(_download_files_to_node, target_node=node, s3_path=s3_file_path))
             results = [thread.result() for thread in threads]
             self.log.debug("executer results: %s", str(all(results)))
 
