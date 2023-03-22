@@ -16,7 +16,7 @@ LOCAL_CMD_RUNNER = LocalCmdRunner()
 
 
 class SstableLoadUtils:
-    LOAD_AND_STREAM_RUN_EXPR = r'(?:storage_service|sstables_loader) - load_and_stream:'
+    # LOAD_AND_STREAM_RUN_EXPR = r'(?:storage_service|sstables_loader) - load_and_stream:'
     LOAD_AND_STREAM_DONE_EXPR = (
         r'(?:storage_service|sstables_loader) - '
         r'Done loading new SSTables for keyspace={}, table={}, '
@@ -106,8 +106,8 @@ class SstableLoadUtils:
     @classmethod
     def run_load_and_stream(cls, node, keyspace_name: str = 'keyspace1', table_name: str = 'standard1'):
         system_log_follower = node.follow_system_log(
-            patterns=[cls.LOAD_AND_STREAM_DONE_EXPR.format(keyspace_name, table_name),
-                      cls.LOAD_AND_STREAM_RUN_EXPR])
+            patterns=[cls.LOAD_AND_STREAM_DONE_EXPR.format(keyspace_name, table_name),])
+        # cls.LOAD_AND_STREAM_RUN_EXPR])
         LOGGER.info("Running load and stream on the node %s for %s.%s'", node.name, keyspace_name, table_name)
 
         # `load_and_stream` parameter is not supported by nodetool yet. This is workaround
@@ -232,10 +232,10 @@ class SstableLoadUtils:
         Starting with the Scylla 4.6 version the prefix becomes 'sstables_loader' instead of
         the 'storage_service' one.
         """
-        load_and_stream_status = cls.wait_for_load_and_stream_start(node, system_log_follower,
-                                                                    keyspace_name, table_name)
-        if load_and_stream_status == "n/a":
-            cls.wait_for_load_and_stream_finish(node, system_log_follower, keyspace_name, table_name)
+        # load_and_stream_status = cls.wait_for_load_and_stream_start(node, system_log_follower,
+        #                                                             keyspace_name, table_name)
+        # if load_and_stream_status == "n/a":
+        cls.wait_for_load_and_stream_finish(node, system_log_follower, keyspace_name, table_name)
 
     @classmethod
     def get_load_test_data_inventory(cls, column_number: int, big_sstable: bool,
