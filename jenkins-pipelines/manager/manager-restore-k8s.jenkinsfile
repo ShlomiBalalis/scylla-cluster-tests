@@ -6,8 +6,9 @@ def lib = library identifier: 'sct@snapshot', retriever: legacySCM(scm)
 managerPipeline(
     backend: 'k8s-eks',
     region: 'us-east-1',
+    availability_zone: 'a,b',
     test_name: 'mgmt_cli_test.MgmtCliTest.test_restore_backup_with_task',
-    test_config: '''["test-cases/manager/manager-regression-multiDC-set-distro.yaml", "defaults/k8s_eks_config.yaml"]''',
+    test_config: 'test-cases/manager/manager-operator-restore.yaml',
 
     post_behavior_db_nodes: 'destroy',
     post_behavior_loader_nodes: 'destroy',
