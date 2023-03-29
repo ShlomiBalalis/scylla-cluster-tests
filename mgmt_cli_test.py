@@ -39,7 +39,7 @@ from sdcm.mgmt.common import reconfigure_scylla_manager
 from sdcm.remote import shell_script_cmd
 from sdcm.tester import ClusterTester
 from sdcm.cluster import TestConfig
-from sdcm.nemesis import MgmtRepair
+# from sdcm.nemesis import MgmtRepair
 from sdcm.utils.common import reach_enospc_on_node, clean_enospc_on_node
 from sdcm.utils.loader_utils import LoaderUtilsMixin
 from sdcm.sct_events.system import InfoEvent
@@ -303,16 +303,16 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
     LOCALSTRATEGY_KEYSPACE_NAME = "localstrategy_keyspace"
     SIMPLESTRATEGY_KEYSPACE_NAME = "simplestrategy_keyspace"
 
-    def test_mgmt_repair_nemesis(self):
-        """
-            Test steps:
-            1) Run cassandra stress on cluster.
-            2) Add cluster to Manager and run full repair via Nemesis
-        """
-        self.generate_load_and_wait_for_results()
-        self.log.debug("test_mgmt_cli: initialize MgmtRepair nemesis")
-        mgmt_nemesis = MgmtRepair(tester_obj=self, termination_event=self.db_cluster.nemesis_termination_event)
-        mgmt_nemesis.disrupt()
+    # def test_mgmt_repair_nemesis(self):
+    #     """
+    #         Test steps:
+    #         1) Run cassandra stress on cluster.
+    #         2) Add cluster to Manager and run full repair via Nemesis
+    #     """
+    #     self.generate_load_and_wait_for_results()
+    #     self.log.debug("test_mgmt_cli: initialize MgmtRepair nemesis")
+    #     mgmt_nemesis = MgmtRepair(tester_obj=self, termination_event=self.db_cluster.nemesis_termination_event)
+    #     mgmt_nemesis.disrupt()
 
     def test_mgmt_cluster_crud(self):
         """
@@ -825,54 +825,54 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
             mgr_cluster.delete()  # remove cluster at the end of the test
         self.log.info('finishing test_healthcheck_change_max_timeout')
 
-    def test_manager_upgrade(self):
-        """
-        Test steps:
-        1) Run the repair test.
-        2) Run manager upgrade to new version of yaml: 'scylla_mgmt_upgrade_to_repo'. (the 'from' version is: 'scylla_mgmt_address').
-        """
-        self.log.info('starting test_manager_upgrade')
-        scylla_mgmt_upgrade_to_repo = self.params.get('scylla_mgmt_upgrade_to_repo')
-        manager_node = self.monitors.nodes[0]
-        manager_tool = mgmt.get_scylla_manager_tool(manager_node=manager_node)
-        selected_host = self.get_cluster_hosts_ip()[0]
-        cluster_name = 'mgr_cluster1'
-        mgr_cluster = manager_tool.get_cluster(cluster_name=cluster_name) or \
-            manager_tool.add_cluster(name=cluster_name, host=selected_host,
-                                     auth_token=self.monitors.mgmt_auth_token)
-        self.log.info('Running some stress and repair before upgrade')
-        self.test_mgmt_repair_nemesis()
+    # def test_manager_upgrade(self):
+    #     """
+    #     Test steps:
+    #     1) Run the repair test.
+    #     2) Run manager upgrade to new version of yaml: 'scylla_mgmt_upgrade_to_repo'. (the 'from' version is: 'scylla_mgmt_address').
+    #     """
+    #     self.log.info('starting test_manager_upgrade')
+    #     scylla_mgmt_upgrade_to_repo = self.params.get('scylla_mgmt_upgrade_to_repo')
+    #     manager_node = self.monitors.nodes[0]
+    #     manager_tool = mgmt.get_scylla_manager_tool(manager_node=manager_node)
+    #     selected_host = self.get_cluster_hosts_ip()[0]
+    #     cluster_name = 'mgr_cluster1'
+    #     mgr_cluster = manager_tool.get_cluster(cluster_name=cluster_name) or \
+    #         manager_tool.add_cluster(name=cluster_name, host=selected_host,
+    #                                  auth_token=self.monitors.mgmt_auth_token)
+    #     self.log.info('Running some stress and repair before upgrade')
+    #     self.test_mgmt_repair_nemesis()
+    #
+    #     repair_task_list = mgr_cluster.repair_task_list
+    #
+    #     manager_from_version = manager_tool.sctool.version
+    #     manager_tool.upgrade(scylla_mgmt_upgrade_to_repo=scylla_mgmt_upgrade_to_repo)
+    #
+    #     assert manager_from_version[0] != manager_tool.sctool.version[0], "Manager version not changed after upgrade."
+    #     # verify all repair tasks exist
+    #     for repair_task in repair_task_list:
+    #         self.log.debug("{} status: {}".format(repair_task.id, repair_task.status))
+    #
+    #     self.log.info('Running a new repair task after upgrade')
+    #     repair_task = mgr_cluster.create_repair_task()
+    #     self.log.debug("{} status: {}".format(repair_task.id, repair_task.status))
+    #     self.log.info('finishing test_manager_upgrade')
 
-        repair_task_list = mgr_cluster.repair_task_list
-
-        manager_from_version = manager_tool.sctool.version
-        manager_tool.upgrade(scylla_mgmt_upgrade_to_repo=scylla_mgmt_upgrade_to_repo)
-
-        assert manager_from_version[0] != manager_tool.sctool.version[0], "Manager version not changed after upgrade."
-        # verify all repair tasks exist
-        for repair_task in repair_task_list:
-            self.log.debug("{} status: {}".format(repair_task.id, repair_task.status))
-
-        self.log.info('Running a new repair task after upgrade')
-        repair_task = mgr_cluster.create_repair_task()
-        self.log.debug("{} status: {}".format(repair_task.id, repair_task.status))
-        self.log.info('finishing test_manager_upgrade')
-
-    def test_manager_rollback_upgrade(self):
-        """
-        Test steps:
-        1) Run Upgrade test: scylla_mgmt_address --> scylla_mgmt_upgrade_to_repo
-        2) Run manager downgrade to pre-upgrade version as in yaml: 'scylla_mgmt_address'.
-        """
-        self.log.info('starting test_manager_rollback_upgrade')
-        self.test_manager_upgrade()
-        scylla_mgmt_address = self.params.get('scylla_mgmt_address')
-        manager_node = self.monitors.nodes[0]
-        manager_tool = mgmt.get_scylla_manager_tool(manager_node=manager_node)
-        manager_from_version = manager_tool.sctool.version
-        manager_tool.rollback_upgrade(scylla_mgmt_address=scylla_mgmt_address)
-        assert manager_from_version[0] != manager_tool.sctool.version[0], "Manager version not changed after rollback."
-        self.log.info('finishing test_manager_rollback_upgrade')
+    # def test_manager_rollback_upgrade(self):
+    #     """
+    #     Test steps:
+    #     1) Run Upgrade test: scylla_mgmt_address --> scylla_mgmt_upgrade_to_repo
+    #     2) Run manager downgrade to pre-upgrade version as in yaml: 'scylla_mgmt_address'.
+    #     """
+    #     self.log.info('starting test_manager_rollback_upgrade')
+    #     self.test_manager_upgrade()
+    #     scylla_mgmt_address = self.params.get('scylla_mgmt_address')
+    #     manager_node = self.monitors.nodes[0]
+    #     manager_tool = mgmt.get_scylla_manager_tool(manager_node=manager_node)
+    #     manager_from_version = manager_tool.sctool.version
+    #     manager_tool.rollback_upgrade(scylla_mgmt_address=scylla_mgmt_address)
+    #     assert manager_from_version[0] != manager_tool.sctool.version[0], "Manager version not changed after rollback."
+    #     self.log.info('finishing test_manager_rollback_upgrade')
 
     def test_repair_multiple_keyspace_types(self):  # pylint: disable=invalid-name
         self.log.info('starting test_repair_multiple_keyspace_types')

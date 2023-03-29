@@ -116,6 +116,7 @@ from test_lib.compaction import CompactionStrategy, get_compaction_strategy, get
     get_gc_mode, GcMode
 from test_lib.cql_types import CQLTypeBuilder
 from test_lib.sla import ServiceLevel, MAX_ALLOWED_SERVICE_LEVELS
+from mgmt_cli_test import BackupFunctionsMixIn
 
 LOGGER = logging.getLogger(__name__)
 # NOTE: following lock is needed in the K8S multitenant case
@@ -185,7 +186,7 @@ class NemesisSubTestFailure(Exception):
     """
 
 
-class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-methods
+class Nemesis(BackupFunctionsMixIn):  # pylint: disable=too-many-instance-attributes,too-many-public-methods
     DISRUPT_NAME_PREF: str = "disrupt_"
 
     # nemesis flags:
@@ -2660,6 +2661,9 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         else:
             mgr_task.stop()
             assert False, f'Backup task {mgr_task.id} timed out - while on status {status}'
+        self.verify_backup_success(mgr_cluster=mgr_cluster, backup_task=mgr_task, restore_data_with_task=True,
+                                   timeout=1000)
+        self.run_verification_read_stress()
 
     @latency_calculator_decorator(legend="Scylla-Manger repair")
     def disrupt_mgmt_repair_cli(self):
