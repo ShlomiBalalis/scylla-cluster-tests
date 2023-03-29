@@ -102,7 +102,7 @@ from sdcm.utils.k8s import (
 )
 from sdcm.utils.k8s.chaos_mesh import MemoryStressExperiment, IOFaultChaosExperiment, DiskError
 from sdcm.utils.ldap import SASLAUTHD_AUTHENTICATOR, LdapServerType
-from sdcm.utils.loader_utils import DEFAULT_USER, DEFAULT_USER_PASSWORD, SERVICE_LEVEL_NAME_TEMPLATE
+from sdcm.utils.loader_utils import DEFAULT_USER, DEFAULT_USER_PASSWORD, SERVICE_LEVEL_NAME_TEMPLATE, LoaderUtilsMixin
 from sdcm.utils.nemesis_utils.indexes import get_random_column_name, create_index, \
     wait_for_index_to_be_built, verify_query_by_index_works, drop_index, get_column_names, \
     wait_for_view_to_be_built, drop_materialized_view, is_cf_a_view
@@ -116,7 +116,7 @@ from test_lib.compaction import CompactionStrategy, get_compaction_strategy, get
     get_gc_mode, GcMode
 from test_lib.cql_types import CQLTypeBuilder
 from test_lib.sla import ServiceLevel, MAX_ALLOWED_SERVICE_LEVELS
-from mgmt_cli_test import BackupFunctionsMixIn
+# from mgmt_cli_test import BackupFunctionsMixIn
 
 LOGGER = logging.getLogger(__name__)
 # NOTE: following lock is needed in the K8S multitenant case
@@ -186,7 +186,7 @@ class NemesisSubTestFailure(Exception):
     """
 
 
-class Nemesis(BackupFunctionsMixIn):  # pylint: disable=too-many-instance-attributes,too-many-public-methods
+class Nemesis(LoaderUtilsMixin):  # pylint: disable=too-many-instance-attributes,too-many-public-methods
     DISRUPT_NAME_PREF: str = "disrupt_"
 
     # nemesis flags:
@@ -2661,9 +2661,26 @@ class Nemesis(BackupFunctionsMixIn):  # pylint: disable=too-many-instance-attrib
         else:
             mgr_task.stop()
             assert False, f'Backup task {mgr_task.id} timed out - while on status {status}'
-        self.verify_backup_success(mgr_cluster=mgr_cluster, backup_task=mgr_task, restore_data_with_task=True,
-                                   timeout=1000)
-        self.run_verification_read_stress()
+        self.cluster.nodes[0].run_cqlsh('TRUNCATE keyspace1.standard1')
+        snapshot_tag = mgr_task.get_snapshot_tag()
+        backend = self.cluster.params.get("backup_bucket_backend")
+        locations = [f"{backend}:{location}" for location in
+                     self.cluster.params.get("backup_bucket_location").split()[:1]]
+        restore_task = mgr_cluster.create_restore_task(restore_data=True, location_list=locations,
+                                                       snapshot_tag=snapshot_tag)
+        restore_task.wait_and_get_final_status(step=30, timeout=1500)
+        assert restore_task.status == TaskStatus.DONE, f"Data restoration of {snapshot_tag} has failed!"
+        for node in self.cluster.nodes:
+            node.run_nodetool("repair")  # After data restoration, you should repair every node
+        # self.run_verification_read_stress()
+        stress_cmd = self.cluster.params.get('stress_read_cmd')
+        keyspace_num = self.cluster.params.get('keyspace_num')
+        stress_queue = []
+        self.assemble_and_run_all_stress_cmd(stress_queue, stress_cmd, keyspace_num)
+        for stress in stress_queue:
+            # self.verify_stress_thread(cs_thread_pool=stress)
+            self.tester.verify_stress_thread(cs_thread_pool=stress)
+        # write_thread = self.tester.run_stress_thread(stress_cmd=write_cmd, round_robin=True, stop_test_on_failure=False)
 
     @latency_calculator_decorator(legend="Scylla-Manger repair")
     def disrupt_mgmt_repair_cli(self):
