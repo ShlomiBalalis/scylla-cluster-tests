@@ -9,6 +9,6 @@ n_loaders: 2
 n_monitor_nodes: 1
 instance_type_db: 'i3.4xlarge'
 
-mgmt_docker_image: 'scylladb/scylla-manager:3.1.0-rc0-0.20230327.e0369c82'
+mgmt_docker_image: 'scylladb/scylla-manager:3.1.0-rc0-0.20230331.2a37e91eb03'
 
 user_prefix: manager-operator-restore
