@@ -67,7 +67,7 @@ class LoaderUtilsMixin:
     def assemble_and_run_all_stress_cmd(self, stress_queue, stress_cmd, keyspace_num):
         if stress_cmd:
             # Stress: Same as in prepare_write - allow the load to be spread across all loaders when using multi ks
-            if keyspace_num > 1 and self.params.get('round_robin'):
+            if keyspace_num > 1 and True:
                 self.log.debug("Using round_robin for multiple Keyspaces...")
                 for i in range(1, keyspace_num + 1):
                     keyspace_name = self._get_keyspace_name(i)
@@ -78,7 +78,7 @@ class LoaderUtilsMixin:
             # The old method when we run all stress_cmds for all keyspace on the same loader, or in round-robin if defined in test yaml
             else:
                 params = {'keyspace_num': keyspace_num, 'stress_cmd': stress_cmd,
-                          'round_robin': self.params.get('round_robin')}
+                          'round_robin': True}
                 self._run_all_stress_cmds(stress_queue, params)
 
     def _run_all_stress_cmds(self, stress_queue, params):
