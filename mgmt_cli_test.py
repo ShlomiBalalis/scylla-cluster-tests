@@ -39,7 +39,7 @@ from sdcm.mgmt.common import reconfigure_scylla_manager
 from sdcm.remote import shell_script_cmd
 from sdcm.tester import ClusterTester
 from sdcm.cluster import TestConfig
-from sdcm.nemesis import MgmtRepair
+from sdcm.nemesis import MgmtRepair, NodeTerminateAndReplace
 from sdcm.utils.common import reach_enospc_on_node, clean_enospc_on_node
 from sdcm.utils.loader_utils import LoaderUtilsMixin
 from sdcm.sct_events.system import InfoEvent
@@ -302,6 +302,30 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
     CLUSTER_NAME = "mgr_cluster1"
     LOCALSTRATEGY_KEYSPACE_NAME = "localstrategy_keyspace"
     SIMPLESTRATEGY_KEYSPACE_NAME = "simplestrategy_keyspace"
+
+    def test_rakuten_issue(self):
+        self.run_prepare_write_cmd()
+        manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
+        mgr_cluster = manager_tool.get_cluster(cluster_name=self.CLUSTER_NAME) \
+            or manager_tool.add_cluster(name=self.CLUSTER_NAME, db_cluster=self.db_cluster,
+                                        auth_token=self.monitors.mgmt_auth_token)
+        backup_task = mgr_cluster.create_backup_task(location_list=self.locations)
+        backup_task_status = backup_task.wait_and_get_final_status(timeout=110000)
+        assert backup_task_status == TaskStatus.DONE, \
+            f"Backup task ended in {backup_task_status} instead of {TaskStatus.DONE}"
+        InfoEvent(message=f'The backup task has ended successfully. Backup run time: {backup_task.duration}').publish()
+        replace_nemesis = NodeTerminateAndReplace(
+            tester_obj=self, termination_event=self.db_cluster.nemesis_termination_event)
+        replace_nemesis.disrupt()
+        backup_task.start(continue_task=False)
+        backup_task_status = backup_task.wait_and_get_final_status(timeout=110000)
+        assert backup_task_status == TaskStatus.DONE, \
+            f"Backup task ended in {backup_task_status} instead of {TaskStatus.DONE}"
+        InfoEvent(message=f'The backup task has ended successfully. Backup run time: {backup_task.duration}').publish()
+        self.db_cluster.nodes[0].run_cqlsh('TRUNCATE keyspace1.standard1')
+        self.restore_backup_with_task(mgr_cluster=mgr_cluster, snapshot_tag=backup_task.get_snapshot_tag(),
+                                      timeout=110000, restore_data=True)
+        self.run_verification_read_stress()
 
     def test_mgmt_repair_nemesis(self):
         """
