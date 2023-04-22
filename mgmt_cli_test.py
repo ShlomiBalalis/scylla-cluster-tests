@@ -214,8 +214,13 @@ class BackupFunctionsMixIn(LoaderUtilsMixin):
         if restore_schema:
             self.db_cluster.restart_scylla()  # After schema restoration, you should restart the nodes
         if restore_data:
-            for node in self.db_cluster.nodes:
-                node.run_nodetool("repair")  # After data restoration, you should repair every node
+            # for node in self.db_cluster.nodes:
+            #     node.run_nodetool("repair")  # After data restoration, you should repair every node
+            repair_task = mgr_cluster.create_repair_task()
+            repair_task_status = repair_task.wait_and_get_final_status(step=30)
+            assert repair_task_status == TaskStatus.DONE, \
+                f"The manager repair after the restoration of {snapshot_tag} has failed!: " \
+                f"{restore_task.progress_string(parse_table_res=False, is_verify_errorless_result=True).stdout}"
 
     def run_verification_read_stress(self):
         stress_queue = []
