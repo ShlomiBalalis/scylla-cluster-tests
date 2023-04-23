@@ -64,7 +64,7 @@ from sdcm.cluster_k8s import (
 from sdcm.db_stats import PrometheusDBStats
 from sdcm.log import SDCMAdapter
 from sdcm.logcollector import save_kallsyms_map
-from sdcm.mgmt import TaskStatus
+from sdcm.mgmt.common import TaskStatus, get_persistent_snapshots
 from sdcm.nemesis_publisher import NemesisElasticSearchPublisher
 from sdcm.paths import SCYLLA_YAML_PATH
 from sdcm.prometheus import nemesis_metrics_obj
@@ -2609,6 +2609,65 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
 
     def disrupt_mgmt_backup(self):
         self._mgmt_backup(backup_specific_tables=False)
+
+    def disrupt_mgmt_restore(self):
+        def get_minimum_free_space():
+            minimum_space = 99999999999999
+            for node in self.cluster.nodes:
+                result = node.remoter.run("df -al | grep '/var/lib/scylla'")  # Size in KB
+                free_space_size = int(result.stdout.split()[3]) / 1024 ** 2  # Converting to GB
+                minimum_space = min(minimum_space, free_space_size)
+            return minimum_space
+
+        if not self.cluster.params.get('use_mgmt') and not self.cluster.params.get('use_cloud_manager'):
+            raise UnsupportedNemesis('Scylla-manager configuration is not defined!')
+        if self.cluster.params.get('cluster_backend') != 'aws':
+            raise UnsupportedNemesis("The restore test only supports only AWS ATM")
+        mgr_cluster = self.cluster.get_cluster_manager()
+        backup_bucket_backend = self.cluster.params.get("backup_bucket_backend")
+
+        persistent_manager_snapshots_dict = get_persistent_snapshots()
+        target_bucket = persistent_manager_snapshots_dict[self.cluster.params.get('cluster_backend')]["bucket"]
+        location_list = [f"{backup_bucket_backend}:{target_bucket}"]
+        snapshots = persistent_manager_snapshots_dict[self.cluster.params.get('cluster_backend')]["snapshots"]
+
+        available_free_space = get_minimum_free_space()
+        snapshot_sizes = sorted(list(snapshots.keys()), reverse=True)
+        snapshot_options = [size for size in snapshot_sizes if available_free_space / size > 4]
+        assert snapshot_options, "There's not enough space for any snapshot restoration"
+        maximum_snapshot = snapshot_options[0]
+        chosen_snapshot = snapshots[maximum_snapshot]
+
+        self.log.info("Restoring the keyspace %s", chosen_snapshot["keyspace_name"])
+        test_keyspaces = self.cluster.get_test_keyspaces()
+        if snapshots[maximum_snapshot]["keyspace_name"] not in test_keyspaces:
+            self.log.info("Restoring the schema of the keyspace '%s'", chosen_snapshot["keyspace_name"])
+            # self.restore_backup_with_task(mgr_cluster=mgr_cluster, snapshot_tag=chosen_snapshot["snapshot_tag"],
+            #                               timeout=180, restore_schema=True, location_list=location_list)
+            restore_task = mgr_cluster.create_restore_task(restore_schema=True, restore_data=False,
+                                                           location_list=location_list,
+                                                           snapshot_tag=chosen_snapshot["snapshot_tag"])
+            restore_task.wait_and_get_final_status(step=30, timeout=120)
+            assert restore_task.status == TaskStatus.DONE, \
+                f'Schema restoration of {chosen_snapshot["snapshot_tag"]} has failed!'
+            self.cluster.restart_scylla()  # After schema restoration, you should restart the nodes
+
+        restore_task = mgr_cluster.create_restore_task(restore_schema=False, restore_data=True,
+                                                       location_list=location_list,
+                                                       snapshot_tag=chosen_snapshot["snapshot_tag"])
+        restore_task.wait_and_get_final_status(step=30, timeout=chosen_snapshot["expected_timeout"])
+        assert restore_task.status == TaskStatus.DONE, \
+            f'Data restoration of {chosen_snapshot["snapshot_tag"]} has failed!'
+
+        mgr_task = mgr_cluster.create_repair_task()
+        task_final_status = mgr_task.wait_and_get_final_status(timeout=chosen_snapshot["expected_timeout"])
+        assert task_final_status == TaskStatus.DONE, 'Task: {} final status is: {}.'.format(
+            mgr_task.id, str(mgr_task.status))
+
+        stress_command = chosen_snapshot["confirmation_stress_command"]
+        read_thread = self.tester.run_stress_thread(stress_cmd=stress_command, round_robin=True,
+                                                    stop_test_on_failure=False)
+        self.tester.verify_stress_thread(cs_thread_pool=read_thread)
 
     def _delete_existing_backups(self, mgr_cluster):
         deleted_tasks = []
