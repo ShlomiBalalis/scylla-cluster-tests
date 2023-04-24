@@ -64,7 +64,7 @@ class LoaderUtilsMixin:
                     AND speculative_retry = '99.0PERCENTILE';
             """)
 
-    def assemble_and_run_all_stress_cmd(self, stress_queue, stress_cmd, keyspace_num):
+    def assemble_and_run_all_stress_cmd(self, stress_queue, stress_cmd, keyspace_num, tester):
         if stress_cmd:
             # Stress: Same as in prepare_write - allow the load to be spread across all loaders when using multi ks
             if keyspace_num > 1 and True:
@@ -73,15 +73,15 @@ class LoaderUtilsMixin:
                     keyspace_name = self._get_keyspace_name(i)
                     params = {'keyspace_name': keyspace_name, 'round_robin': True, 'stress_cmd': stress_cmd}
 
-                    self._run_all_stress_cmds(stress_queue, params)
+                    self._run_all_stress_cmds(stress_queue, params, tester)
 
             # The old method when we run all stress_cmds for all keyspace on the same loader, or in round-robin if defined in test yaml
             else:
                 params = {'keyspace_num': keyspace_num, 'stress_cmd': stress_cmd,
                           'round_robin': True}
-                self._run_all_stress_cmds(stress_queue, params)
+                self._run_all_stress_cmds(stress_queue, params, tester)
 
-    def _run_all_stress_cmds(self, stress_queue, params):
+    def _run_all_stress_cmds(self, stress_queue, params, tester=None):
         stress_cmds = params['stress_cmd']
         if not isinstance(stress_cmds, list):
             stress_cmds = [stress_cmds]
@@ -107,11 +107,19 @@ class LoaderUtilsMixin:
             # Run all stress commands
             self.log.debug('stress cmd: {}'.format(stress_cmd))
             if stress_cmd.startswith('scylla-bench'):
-                stress_queue.append(self.run_stress_thread(stress_cmd=stress_cmd,
-                                                           stats_aggregate_cmds=False,
-                                                           round_robin=False))
+                if tester:
+                    stress_queue.append(tester.run_stress_thread(stress_cmd=stress_cmd,
+                                                                 stats_aggregate_cmds=False,
+                                                                 round_robin=False))
+                else:
+                    stress_queue.append(self.run_stress_thread(stress_cmd=stress_cmd,
+                                                               stats_aggregate_cmds=False,
+                                                               round_robin=False))
             else:
-                stress_queue.append(self.run_stress_thread(**stress_params))
+                if tester:
+                    stress_queue.append(tester.run_stress_thread(**stress_params))
+                else:
+                    stress_queue.append(self.run_stress_thread(**stress_params))
 
             time.sleep(10)
 

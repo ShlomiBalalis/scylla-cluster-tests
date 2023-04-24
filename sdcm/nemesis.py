@@ -2676,7 +2676,7 @@ class Nemesis(LoaderUtilsMixin):  # pylint: disable=too-many-instance-attributes
         stress_cmd = self.cluster.params.get('stress_read_cmd')
         keyspace_num = self.cluster.params.get('keyspace_num')
         stress_queue = []
-        self.assemble_and_run_all_stress_cmd(stress_queue, stress_cmd, keyspace_num)
+        self.assemble_and_run_all_stress_cmd(stress_queue, stress_cmd, keyspace_num, self.tester)
         for stress in stress_queue:
             # self.verify_stress_thread(cs_thread_pool=stress)
             self.tester.verify_stress_thread(cs_thread_pool=stress)
