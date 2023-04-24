@@ -322,6 +322,15 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         replace_nemesis = NodeTerminateAndReplace(
             tester_obj=self, termination_event=self.db_cluster.nemesis_termination_event)
         replace_nemesis.disrupt()
+        another_insert_query = "cassandra-stress write cl=QUORUM n=1000000 -schema 'replication(factor=2)' -mode" \
+                               " cql3 native -rate threads=200 -pop seq=4000001..5000000"
+        write_queue = []
+        self._run_all_stress_cmds(write_queue, params={'stress_cmd': another_insert_query,
+                                                       'keyspace_num': 1,
+                                                       'round_robin': False})
+        for stress in write_queue:
+            self.verify_stress_thread(cs_thread_pool=stress)
+
         backup_task.start(continue_task=False)
         backup_task_status = backup_task.wait_and_get_final_status(timeout=110000)
         assert backup_task_status == TaskStatus.DONE, \
