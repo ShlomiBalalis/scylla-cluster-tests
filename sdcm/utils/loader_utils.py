@@ -86,7 +86,7 @@ class LoaderUtilsMixin:
         if not isinstance(stress_cmds, list):
             stress_cmds = [stress_cmds]
         # In some cases we want the same stress_cmd to run several times (can be used with round_robin or not).
-        stress_multiplier = self.params.get('stress_multiplier')
+        stress_multiplier = 1
         if stress_multiplier > 1:
             stress_cmds *= stress_multiplier
 
@@ -109,7 +109,7 @@ class LoaderUtilsMixin:
             if stress_cmd.startswith('scylla-bench'):
                 stress_queue.append(self.run_stress_thread(stress_cmd=stress_cmd,
                                                            stats_aggregate_cmds=False,
-                                                           round_robin=self.params.get('round_robin')))
+                                                           round_robin=False))
             else:
                 stress_queue.append(self.run_stress_thread(**stress_params))
 
