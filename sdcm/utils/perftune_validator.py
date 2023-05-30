@@ -119,24 +119,31 @@ class PerftuneOutputChecker:  # pylint: disable=too-few-public-methods
         PerftuneResultEvent(
             message="Checking the output of perftune.py",
             severity=Severity.NORMAL).publish()
-        cpu_mask = self.executor.get_cpu_mask()
-        if cpu_mask != self.expected_result.get_expected_cpu_mask():
+        try:
+            cpu_mask = self.executor.get_cpu_mask()
+            if cpu_mask != self.expected_result.get_expected_cpu_mask():
+                PerftuneResultEvent(
+                    message=f"Mismatched results when testing the output of the 'get-cpu-mask' command on {self.node}"
+                            f"\nActual result: '{cpu_mask}'"
+                            f"\nExpected output: '{self.expected_result.get_expected_cpu_mask()}'",
+                    severity=Severity.ERROR).publish()
+            irq_cpu_mask = self.executor.get_irq_cpu_mask()
+            if irq_cpu_mask != self.expected_result.get_expected_irq_cpu_mask():
+                PerftuneResultEvent(
+                    message=f"Mismatched results when testing the output of the 'get-irq-cpu-mask' command on "
+                            f"{self.node}"
+                            f"\nActual result: '{irq_cpu_mask}'"
+                            f"\nExpected output: '{self.expected_result.get_expected_irq_cpu_mask()}'",
+                    severity=Severity.ERROR).publish()
+            option_file_dict = self.executor.get_options_file_contents()
+            if option_file_dict != self.expected_result.get_expected_options_file_contents():
+                PerftuneResultEvent(
+                    message=f"Mismatched results when testing the output of the 'dump-options-file' command on "
+                            f"{self.node}"
+                            f"\nActual result: '{option_file_dict}'"
+                            f"\nExpected output: '{self.expected_result.get_expected_options_file_contents()}'",
+                    severity=Severity.ERROR).publish()
+        except Exception as error:  # pylint: disable=broad-except
             PerftuneResultEvent(
-                message=f"Mismatched results when testing the output of the 'get-cpu-mask' command on {self.node}"
-                        f"\nActual result: '{cpu_mask}'"
-                        f"\nExpected output: '{self.expected_result.get_expected_cpu_mask()}'",
-                severity=Severity.ERROR).publish()
-        irq_cpu_mask = self.executor.get_irq_cpu_mask()
-        if irq_cpu_mask != self.expected_result.get_expected_irq_cpu_mask():
-            PerftuneResultEvent(
-                message=f"Mismatched results when testing the output of the 'get-irq-cpu-mask' command on {self.node}"
-                        f"\nActual result: '{irq_cpu_mask}'"
-                        f"\nExpected output: '{self.expected_result.get_expected_irq_cpu_mask()}'",
-                severity=Severity.ERROR).publish()
-        option_file_dict = self.executor.get_options_file_contents()
-        if option_file_dict != self.expected_result.get_expected_options_file_contents():
-            PerftuneResultEvent(
-                message=f"Mismatched results when testing the output of the 'dump-options-file' command on {self.node}"
-                        f"\nActual result: '{option_file_dict}'"
-                        f"\nExpected output: '{self.expected_result.get_expected_options_file_contents()}'",
+                message=f"Unexpected error when verifying the output of Perftune: {error}",
                 severity=Severity.ERROR).publish()
