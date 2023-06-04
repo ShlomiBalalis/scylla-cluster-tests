@@ -1,4 +1,6 @@
 import json
+import logging
+import traceback
 import yaml
 
 from sdcm.utils.version_utils import ComparableScyllaVersion
@@ -91,15 +93,16 @@ class PerftuneExecutor:
 
 class PerftuneOutputChecker:  # pylint: disable=too-few-public-methods
     def __init__(self, node):
+        self.log = logging.getLogger(self.__class__.__name__)
         self.node = node
         self.comparable_scylla_version = ComparableScyllaVersion(node.scylla_version)
         self.is_enterprise = node.is_enterprise
         nic_name = node.get_nic_devices()[0]
         self.executor = PerftuneExecutor(node, nic_name)
         self.expected_result = PerftuneExpectedResult(
-            get_number_of_cpu_cores(node=node), nic_name, self.comparable_scylla_version, self.is_enterprise)
+            node.db_node_instance_type, nic_name, self.comparable_scylla_version, self.is_enterprise)
 
-    def compare_cpu_mask(self):
+    def compare_cpu_mask(self) -> None:
         cpu_mask = self.executor.get_cpu_mask()
         if cpu_mask != self.expected_result.get_expected_cpu_mask():
             PerftuneResultEvent(
@@ -108,7 +111,7 @@ class PerftuneOutputChecker:  # pylint: disable=too-few-public-methods
                         f"\nExpected output: '{self.expected_result.get_expected_cpu_mask()}'",
                 severity=Severity.ERROR).publish()
 
-    def compare_irq_cpu_mask(self):
+    def compare_irq_cpu_mask(self) -> None:
         irq_cpu_mask = self.executor.get_irq_cpu_mask()
         if irq_cpu_mask != self.expected_result.get_expected_irq_cpu_mask():
             PerftuneResultEvent(
@@ -118,7 +121,7 @@ class PerftuneOutputChecker:  # pylint: disable=too-few-public-methods
                         f"\nExpected output: '{self.expected_result.get_expected_irq_cpu_mask()}'",
                 severity=Severity.ERROR).publish()
 
-    def compare_option_file_yaml(self, option_file_dict):
+    def compare_option_file_yaml(self, option_file_dict) -> None:
         if option_file_dict != self.expected_result.get_expected_options_file_contents():
             PerftuneResultEvent(
                 message=f"Mismatched results when testing the output of the 'dump-options-file' command on "
@@ -128,7 +131,7 @@ class PerftuneOutputChecker:  # pylint: disable=too-few-public-methods
                 severity=Severity.ERROR).publish()
         self.executor.create_pertune_yaml(yaml_dict=option_file_dict)
 
-    def compare_option_file_yaml_with_temp_yaml(self, option_file_dict):
+    def compare_option_file_yaml_with_temp_yaml(self, option_file_dict) -> None:
         temp_perftune_yaml_content_dict = self.executor.get_options_file_contents(use_temp_file=True)
         if temp_perftune_yaml_content_dict != option_file_dict:
             PerftuneResultEvent(
@@ -138,7 +141,7 @@ class PerftuneOutputChecker:  # pylint: disable=too-few-public-methods
                         f"\nExpected output: '{option_file_dict}'",
                 severity=Severity.ERROR).publish()
 
-    def compare_with_overridden_parameter(self, option_file_dict):
+    def compare_with_overridden_parameter(self, option_file_dict) -> None:
         def generate_new_irq_cpu_mask() -> str:
             expected_mask = self.expected_result.get_expected_irq_cpu_mask()
             split_masks = expected_mask.split(",")
@@ -169,3 +172,4 @@ class PerftuneOutputChecker:  # pylint: disable=too-few-public-methods
             PerftuneResultEvent(
                 message=f"Unexpected error when verifying the output of Perftune: {error}",
                 severity=Severity.ERROR).publish()
+            self.log.error(traceback.format_exc())
