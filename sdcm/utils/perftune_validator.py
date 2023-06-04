@@ -121,7 +121,7 @@ class PerftuneOutputChecker:  # pylint: disable=too-few-public-methods
                         f"\nExpected output: '{self.expected_result.get_expected_irq_cpu_mask()}'",
                 severity=Severity.ERROR).publish()
 
-    def compare_option_file_yaml(self, option_file_dict) -> None:
+    def compare_default_option_file(self, option_file_dict) -> None:
         if option_file_dict != self.expected_result.get_expected_options_file_contents():
             PerftuneResultEvent(
                 message=f"Mismatched results when testing the output of the 'dump-options-file' command on "
@@ -129,7 +129,6 @@ class PerftuneOutputChecker:  # pylint: disable=too-few-public-methods
                         f"\nActual result: '{option_file_dict}'"
                         f"\nExpected output: '{self.expected_result.get_expected_options_file_contents()}'",
                 severity=Severity.ERROR).publish()
-        self.executor.create_pertune_yaml(yaml_dict=option_file_dict)
 
     def compare_option_file_yaml_with_temp_yaml(self, option_file_dict) -> None:
         temp_perftune_yaml_content_dict = self.executor.get_options_file_contents(use_temp_file=True)
@@ -166,7 +165,8 @@ class PerftuneOutputChecker:  # pylint: disable=too-few-public-methods
             self.compare_cpu_mask()
             self.compare_irq_cpu_mask()
             option_file_dict = self.executor.get_options_file_contents()
-            self.compare_option_file_yaml(option_file_dict)
+            self.compare_default_option_file(option_file_dict)
+            # self.executor.create_pertune_yaml(yaml_dict=option_file_dict)
             # self.compare_option_file_yaml_with_temp_yaml(option_file_dict)
         except Exception as error:  # pylint: disable=broad-except
             PerftuneResultEvent(
