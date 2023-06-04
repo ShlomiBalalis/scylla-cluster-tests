@@ -1,79 +1,77 @@
 {
-  "aws": {
-    "i3.large": {
-      "get-cpu-mask": "0x00000003",
-      "get-irq-cpu-mask": "0x00000003",
-      "dump-options-file": {"cpu_mask": "0x00000003", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x00000003", "tune": ["net"]}
-    },
-    "i3.xlarge": {
-      "get-cpu-mask": "0x0000000f",
-      "get-irq-cpu-mask": "0x0000000f",
-      "dump-options-file": {"cpu_mask": "0x0000000f", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x0000000f", "tune": ["net"]}
-    },
-    "i3.2xlarge": {
-      "get-cpu-mask": "0x000000fe",
-      "get-irq-cpu-mask": "0x00000001",
-      "dump-options-file": {"cpu_mask": "0x000000ff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x000000ff", "tune": ["net"]}
-    },
-    "i3.4xlarge": {
-      "get-cpu-mask": "0x0000fefe",
-      "get-irq-cpu-mask": "0x00000101",
-      "dump-options-file": {"cpu_mask": "0x0000ffff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x0000ffff", "tune": ["net"]}
-    },
-    "i3.8xlarge": {
-      "get-cpu-mask": "0xfffefffe",
-      "get-irq-cpu-mask": "0x00010001",
-      "dump-options-file": {"cpu_mask": "0xffffffff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0xffffffff", "tune": ["net"]}
-    },
-    "i3.16xlarge": {
-      "get-cpu-mask": "0xfffefffe,0xfffefffe",
-      "get-irq-cpu-mask": "0x00010001,0x00010001",
-      "dump-options-file": {"cpu_mask": "0xffffffff,0xffffffff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0xffffffff,0xffffffff", "tune": ["net"]}
-    },
-    "i3en.large": {
-      "get-cpu-mask": "0x00000003",
-      "get-irq-cpu-mask": "0x00000003",
-      "dump-options-file": {"cpu_mask": "0x00000003", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x00000003", "tune": ["net"]}
-    },
-    "i3en.xlarge": {
-      "get-cpu-mask": "0x0000000f",
-      "get-irq-cpu-mask": "0x0000000f",
-      "dump-options-file": {"cpu_mask": "0x0000000f", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x0000000f", "tune": ["net"]}
-    },
-    "i3en.2xlarge": {
-      "get-cpu-mask": "0x000000fe",
-      "get-irq-cpu-mask": "0x00000001",
-      "dump-options-file": {"cpu_mask": "0x000000ff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x000000ff", "tune": ["net"]}
-    },
-    "i3en.3xlarge": {
-      "get-cpu-mask": "0x00000fbe",
-      "get-irq-cpu-mask": "0x00000041",
-      "dump-options-file": {"cpu_mask": "0x00000fff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x00000fff", "tune": ["net"]}
-    },
-    "i3.metal": {
-      "get-cpu-mask": "0x000000ff,0xff3fffcf,0xfff3fffc",
-      "get-irq-cpu-mask": "0x00c00030,0x000c0003",
-      "dump-options-file": {"cpu_mask": "0x000000ff,0xffffffff,0xffffffff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x000000ff,0xffffffff,0xffffffff", "tune": ["net"]}
-    },
-    "i4i.xlarge": {
-      "get-cpu-mask": "0x0000000f",
-      "get-irq-cpu-mask": "0x0000000f",
-      "dump-options-file": {"cpu_mask": "0x0000000f", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x0000000f", "tune": ["net"]}
-    },
-    "i4i.2xlarge": {
-      "get-cpu-mask": "0x000000fe",
-      "get-irq-cpu-mask": "0x00000001",
-      "dump-options-file": {"cpu_mask": "0x000000ff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x000000ff", "tune": ["net"]}
-    },
-    "i4i.4xlarge": {
-      "get-cpu-mask": "0x0000fefe",
-      "get-irq-cpu-mask": "0x00000101",
-      "dump-options-file": {"cpu_mask": "0x0000ffff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x0000ffff", "tune": ["net"]}
-    },
-    "i4i.8xlarge": {
-      "get-cpu-mask": "0xfffefffe",
-      "get-irq-cpu-mask": "0x00010001",
-      "dump-options-file": {"cpu_mask": "0xffffffff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0xffffffff", "tune": ["net"]}
-    }
+  "i3.large": {
+    "get-cpu-mask": "0x00000003",
+    "get-irq-cpu-mask": "0x00000003",
+    "dump-options-file": {"cpu_mask": "0x00000003", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x00000003", "tune": ["net"]}
+  },
+  "i3.xlarge": {
+    "get-cpu-mask": "0x0000000f",
+    "get-irq-cpu-mask": "0x0000000f",
+    "dump-options-file": {"cpu_mask": "0x0000000f", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x0000000f", "tune": ["net"]}
+  },
+  "i3.2xlarge": {
+    "get-cpu-mask": "0x000000fe",
+    "get-irq-cpu-mask": "0x00000001",
+    "dump-options-file": {"cpu_mask": "0x000000ff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x000000ff", "tune": ["net"]}
+  },
+  "i3.4xlarge": {
+    "get-cpu-mask": "0x0000fefe",
+    "get-irq-cpu-mask": "0x00000101",
+    "dump-options-file": {"cpu_mask": "0x0000ffff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x0000ffff", "tune": ["net"]}
+  },
+  "i3.8xlarge": {
+    "get-cpu-mask": "0xfffefffe",
+    "get-irq-cpu-mask": "0x00010001",
+    "dump-options-file": {"cpu_mask": "0xffffffff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0xffffffff", "tune": ["net"]}
+  },
+  "i3.16xlarge": {
+    "get-cpu-mask": "0xfffefffe,0xfffefffe",
+    "get-irq-cpu-mask": "0x00010001,0x00010001",
+    "dump-options-file": {"cpu_mask": "0xffffffff,0xffffffff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0xffffffff,0xffffffff", "tune": ["net"]}
+  },
+  "i3en.large": {
+    "get-cpu-mask": "0x00000003",
+    "get-irq-cpu-mask": "0x00000003",
+    "dump-options-file": {"cpu_mask": "0x00000003", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x00000003", "tune": ["net"]}
+  },
+  "i3en.xlarge": {
+    "get-cpu-mask": "0x0000000f",
+    "get-irq-cpu-mask": "0x0000000f",
+    "dump-options-file": {"cpu_mask": "0x0000000f", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x0000000f", "tune": ["net"]}
+  },
+  "i3en.2xlarge": {
+    "get-cpu-mask": "0x000000fe",
+    "get-irq-cpu-mask": "0x00000001",
+    "dump-options-file": {"cpu_mask": "0x000000ff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x000000ff", "tune": ["net"]}
+  },
+  "i3en.3xlarge": {
+    "get-cpu-mask": "0x00000fbe",
+    "get-irq-cpu-mask": "0x00000041",
+    "dump-options-file": {"cpu_mask": "0x00000fff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x00000fff", "tune": ["net"]}
+  },
+  "i3.metal": {
+    "get-cpu-mask": "0x000000ff,0xff3fffcf,0xfff3fffc",
+    "get-irq-cpu-mask": "0x00c00030,0x000c0003",
+    "dump-options-file": {"cpu_mask": "0x000000ff,0xffffffff,0xffffffff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x000000ff,0xffffffff,0xffffffff", "tune": ["net"]}
+  },
+  "i4i.xlarge": {
+    "get-cpu-mask": "0x0000000f",
+    "get-irq-cpu-mask": "0x0000000f",
+    "dump-options-file": {"cpu_mask": "0x0000000f", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x0000000f", "tune": ["net"]}
+  },
+  "i4i.2xlarge": {
+    "get-cpu-mask": "0x000000fe",
+    "get-irq-cpu-mask": "0x00000001",
+    "dump-options-file": {"cpu_mask": "0x000000ff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x000000ff", "tune": ["net"]}
+  },
+  "i4i.4xlarge": {
+    "get-cpu-mask": "0x0000fefe",
+    "get-irq-cpu-mask": "0x00000101",
+    "dump-options-file": {"cpu_mask": "0x0000ffff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x0000ffff", "tune": ["net"]}
+  },
+  "i4i.8xlarge": {
+    "get-cpu-mask": "0xfffefffe",
+    "get-irq-cpu-mask": "0x00010001",
+    "dump-options-file": {"cpu_mask": "0xffffffff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0xffffffff", "tune": ["net"]}
   }
 }
