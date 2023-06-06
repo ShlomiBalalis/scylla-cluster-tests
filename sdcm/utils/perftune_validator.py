@@ -1,5 +1,6 @@
 import json
 import logging
+import random
 import traceback
 import yaml
 
@@ -8,9 +9,15 @@ from sdcm.sct_events import Severity
 from sdcm.sct_events.system import PerftuneResultEvent
 
 
+# https://docs.scylladb.com/stable/operating-scylla/admin-tools/perftune.html
+
+
 PERFTUNE_LOCATION = "/opt/scylladb/scripts/perftune.py"
 TEMP_PERFTUNE_YAML_PATH = "/tmp/perftune.yaml"
 PERFTUNE_EXPECTED_RESULTS_PATH = "defaults/perftune_results.json"
+
+
+# "aws": {
 
 
 def get_number_of_cpu_cores(node) -> int:
@@ -75,18 +82,30 @@ class PerftuneExecutor:
         result = self.node.remoter.run(f"{PERFTUNE_LOCATION} --tune net --nic {self.nic_name} --get-irq-cpu-mask")
         return result.stdout.strip()
 
-    def get_options_file_contents(self, use_temp_file=False, override_mode="", override_irq_cpu_mask="") -> dict:
-        mode = override_mode if override_mode else "mq"
-        cmd = f"{PERFTUNE_LOCATION} --tune net --nic {self.nic_name} --mode {mode} --dump-options-file"
+    def get_default_mode(self):
+        number_of_cores = get_number_of_cpu_cores(node=self.node)
+        if number_of_cores <= 4:
+            return "mq"
+        elif number_of_cores <= 8:
+            return "sq"
+        elif number_of_cores <= 32:
+            return "sq_split"
+        raise ValueError(f"Unsupported amount of CPU cores for 'mode' param: {number_of_cores}")
+
+    def get_options_file_contents(self, use_temp_file=False, mode="", override_irq_cpu_mask="") -> dict:
+        cmd = f"{PERFTUNE_LOCATION} --tune net --nic {self.nic_name} --dump-options-file"
+        if mode:
+            cmd += f" --mode {mode}"
         if use_temp_file:
             cmd += f" --options-file {TEMP_PERFTUNE_YAML_PATH}"
         if override_irq_cpu_mask:
-            cmd += f" --override-irq-cpu-mask {override_irq_cpu_mask}"
+            cmd += f" --irq-cpu-mask {override_irq_cpu_mask}"
         result = self.node.remoter.run(cmd)
         result_as_yaml = yaml.safe_load(result.stdout)
         return result_as_yaml
 
-    def create_pertune_yaml(self, yaml_dict) -> None:
+    def create_temp_perftune_yaml(self, yaml_dict) -> None:
+        self.node.remoter.run(f"touch {TEMP_PERFTUNE_YAML_PATH}")
         with self.node._remote_yaml(path=TEMP_PERFTUNE_YAML_PATH) as temp_yaml:
             temp_yaml.update(yaml_dict)
 
@@ -130,7 +149,7 @@ class PerftuneOutputChecker:  # pylint: disable=too-few-public-methods
                         f"\nExpected output: '{self.expected_result.get_expected_options_file_contents()}'",
                 severity=Severity.ERROR).publish()
 
-    def compare_option_file_yaml_with_temp_yaml(self, option_file_dict) -> None:
+    def compare_option_file_yaml_with_temp_yaml_copy(self, option_file_dict) -> None:
         temp_perftune_yaml_content_dict = self.executor.get_options_file_contents(use_temp_file=True)
         if temp_perftune_yaml_content_dict != option_file_dict:
             PerftuneResultEvent(
@@ -140,22 +159,74 @@ class PerftuneOutputChecker:  # pylint: disable=too-few-public-methods
                         f"\nExpected output: '{option_file_dict}'",
                 severity=Severity.ERROR).publish()
 
-    def compare_with_overridden_parameter(self, option_file_dict) -> None:
-        def generate_new_irq_cpu_mask() -> str:
-            expected_mask = self.expected_result.get_expected_irq_cpu_mask()
-            split_masks = expected_mask.split(",")
-            new_masks = []
-            for mask_string in split_masks:
-                num_value = int(mask_string, base=16)
-                num_value -= 1
-                new_mask_string = "{0:x}".format(num_value)  # converting back to base 16
-                padded_new_mask_string = f"0x{new_mask_string.rjust(8, '0')}"  # Padding
-                new_masks.append(padded_new_mask_string)
-            return ",".join(new_masks)
+    @staticmethod
+    def _generate_new_irq_cpu_mask_string(mask_int_values) -> str:
+        new_masks = []
+        for mask_value in mask_int_values:
+            random_irq_int_value = random.randint(0, mask_value)
+            # The irq_cpu_mask cannot be greater than the cpu_mask, since it is a part of it
+            new_mask_string = "{0:x}".format(random_irq_int_value)  # converting back to base 16
+            padded_new_mask_string = f"0x{new_mask_string.rjust(8, '0')}"  # Padding
+            new_masks.append(padded_new_mask_string)
+        return ",".join(new_masks)
+
+    @staticmethod
+    def get_mask_int_values(complete_mask_string) -> list:
+        split_masks = complete_mask_string.split(",")
+        numerical_values = []
+        for mask_string in split_masks:
+            num_value = int(mask_string, base=16)
+            numerical_values.append(num_value)
+        return numerical_values
+
+    def _compare_option_file_with_overridden_irq_cpu_mask_param(self, option_file_dict) -> None:
+        current_cpu_mask = option_file_dict["cpu_mask"]
+        cpu_mask_int_values = self.get_mask_int_values(current_cpu_mask)
+        random_irq_cpu_mask_string = self._generate_new_irq_cpu_mask_string(cpu_mask_int_values)
+        altered_option_file_contents = self.executor.get_options_file_contents(
+            override_irq_cpu_mask=random_irq_cpu_mask_string)
+        if altered_option_file_contents["irq_cpu_mask"] != random_irq_cpu_mask_string:
+            PerftuneResultEvent(
+                message=f"Despite overriding the irq_cpu_mask param, its value is was not altered properly in the "
+                        f"output of the 'dump-options-file' command on node {self.node}",
+                severity=Severity.ERROR).publish()
+
+    def _get_current_mode(self) -> str:
+        # if (self.is_enterprise and self.comparable_scylla_version < "2022.2.7")\
+        #         or self.comparable_scylla_version < "5.2":
+        #     option_file_dict = self.executor.get_options_file_contents()
+        #     current_mode = option_file_dict["mode"]
+        if self.expected_result.get_expected_cpu_mask() == self.expected_result.get_expected_irq_cpu_mask():
+            return "mq"
+        return "sq"
+
+    def _compare_option_file_with_overridden_mode_param(self, option_file_dict) -> None:
+        current_mode = self._get_current_mode()
+        if current_mode == "mq":
+            alternative_mode = "sq"
+            altered_option_file_contents = self.executor.get_options_file_contents(mode=alternative_mode)
+            if altered_option_file_contents["cpu_mask"] == option_file_dict["irq_cpu_mask"]:
+                PerftuneResultEvent(
+                    message=f"On {self.node}, when using the {alternative_mode} mode, the irq_cpu_mask is expected to "
+                            f"be different from the cpu_mask, but they're identical."
+                            f"\ndump-options-file output: '{altered_option_file_contents}'",
+                    severity=Severity.ERROR).publish()
+        else:
+            alternative_mode = "mq"
+            altered_option_file_contents = self.executor.get_options_file_contents(mode=alternative_mode)
+            if altered_option_file_contents["cpu_mask"] != option_file_dict["irq_cpu_mask"]:
+                PerftuneResultEvent(
+                    message=f"On {self.node}, when using the {alternative_mode} mode, the irq_cpu_mask is expected to "
+                            f"be equal to the cpu_mask, but they're different."
+                            f"\ndump-options-file output: '{altered_option_file_contents}'",
+                    severity=Severity.ERROR).publish()
+
+    def compare_option_file_with_overridden_parameter(self, option_file_dict) -> None:
         if (self.is_enterprise and self.comparable_scylla_version >= "2022.2.7")\
                 or self.comparable_scylla_version >= "5.2":
-            altered_yaml_contents = self.executor.get_options_file_contents(
-                override_irq_cpu_mask=generate_new_irq_cpu_mask())
+            self._compare_option_file_with_overridden_irq_cpu_mask_param(option_file_dict)
+        else:
+            self._compare_option_file_with_overridden_mode_param(option_file_dict)
 
     def compare_perftune_results(self) -> None:
         PerftuneResultEvent(
@@ -164,10 +235,11 @@ class PerftuneOutputChecker:  # pylint: disable=too-few-public-methods
         try:
             self.compare_cpu_mask()
             self.compare_irq_cpu_mask()
-            option_file_dict = self.executor.get_options_file_contents()
+            option_file_dict = self.executor.get_options_file_contents(mode=self.executor.get_default_mode())
             self.compare_default_option_file(option_file_dict)
-            # self.executor.create_pertune_yaml(yaml_dict=option_file_dict)
-            # self.compare_option_file_yaml_with_temp_yaml(option_file_dict)
+            self.executor.create_temp_perftune_yaml(yaml_dict=option_file_dict)
+            self.compare_option_file_yaml_with_temp_yaml_copy(option_file_dict)
+            self.compare_option_file_with_overridden_parameter(option_file_dict)
         except Exception as error:  # pylint: disable=broad-except
             PerftuneResultEvent(
                 message=f"Unexpected error when verifying the output of Perftune: {error}",
