@@ -25,9 +25,6 @@ from datetime import datetime
 
 import boto3
 
-import yaml
-import libcloud.storage.types
-import libcloud.storage.providers
 from invoke import exceptions
 from pkg_resources import parse_version
 from tenacity import RetryError
