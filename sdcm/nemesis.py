@@ -2611,13 +2611,10 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         self._mgmt_backup(backup_specific_tables=False)
 
     def disrupt_mgmt_restore(self):
-        def get_minimum_free_space():
-            minimum_space = 99999999999999
-            for node in self.cluster.nodes:
-                result = node.remoter.run("df -al | grep '/var/lib/scylla'")  # Size in KB
-                free_space_size = int(result.stdout.split()[3]) / 1024 ** 2  # Converting to GB
-                minimum_space = min(minimum_space, free_space_size)
-            return minimum_space
+        def get_total_disk_size():
+            result = self.cluster.nodes[0].remoter.run("df -k /")  # Size in KB
+            free_space_size = int(result.stdout.split()[1]) / 1024 ** 2  # Converting to GB
+            return free_space_size
 
         if not self.cluster.params.get('use_mgmt') and not self.cluster.params.get('use_cloud_manager'):
             raise UnsupportedNemesis('Scylla-manager configuration is not defined!')
@@ -2631,9 +2628,10 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         location_list = [f"{backup_bucket_backend}:{target_bucket}"]
         snapshots = persistent_manager_snapshots_dict[self.cluster.params.get('cluster_backend')]["snapshots"]
 
-        available_free_space = get_minimum_free_space()
+        total_disk_space = get_total_disk_size()
         snapshot_sizes = sorted(list(snapshots.keys()), reverse=True)
-        snapshot_options = [size for size in snapshot_sizes if available_free_space / size > 4]
+        snapshot_options = [size for size in snapshot_sizes if total_disk_space / size >= 20]
+        # The restore should not take more than 5% of the complete disk space
         assert snapshot_options, "There's not enough space for any snapshot restoration"
         maximum_snapshot = snapshot_options[0]
         chosen_snapshot = snapshots[maximum_snapshot]
