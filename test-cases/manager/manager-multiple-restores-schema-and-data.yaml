@@ -1,6 +1,6 @@
 test_duration: 2100
 
-instance_type_db: 'i3en.3xlarge'
+instance_type_db: 'i3en.xlarge'
 
 # Using this region specifically because the bucket that contain the persistent snapshots that this test use are in us-east-1
 region_name: us-east-1
