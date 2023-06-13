@@ -230,6 +230,8 @@ class BackupFunctionsMixIn(LoaderUtilsMixin):
     def _generate_load(self, keyspace_name_to_replace=None):
         self.log.info('Starting c-s write workload')
         stress_cmd = self.params.get('stress_cmd')
+        stress_cmd = stress_cmd.replace("gb_sizetiered",
+                                        "gb_sizetiered_" + self.params.get("scylla_version").replace(".", "_"))
         if keyspace_name_to_replace:
             stress_cmd = stress_cmd.replace("keyspace1", keyspace_name_to_replace)
         stress_thread = self.run_stress_thread(stress_cmd=stress_cmd)
@@ -539,6 +541,7 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
 
     def test_basic_backup(self):
         self.log.info('starting test_basic_backup')
+        self.generate_load_and_wait_for_results()
         manager_tool = mgmt.get_scylla_manager_tool(manager_node=self.monitors.nodes[0])
         mgr_cluster = manager_tool.get_cluster(cluster_name=self.CLUSTER_NAME) \
             or manager_tool.add_cluster(name=self.CLUSTER_NAME, db_cluster=self.db_cluster,
