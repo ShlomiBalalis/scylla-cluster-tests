@@ -230,7 +230,7 @@ class BackupFunctionsMixIn(LoaderUtilsMixin):
     def _generate_load(self, keyspace_name_to_replace=None):
         self.log.info('Starting c-s write workload')
         stress_cmd = self.params.get('stress_cmd')
-        stress_cmd.replace("10gb_sizetiered", "10gb_sizetiered_" + self.params.get("scylla_version"))
+        stress_cmd.replace("100gb_sizetiered", "100gb_sizetiered_" + self.params.get("scylla_version"))
         if keyspace_name_to_replace:
             stress_cmd = stress_cmd.replace("keyspace1", keyspace_name_to_replace)
         stress_thread = self.run_stress_thread(stress_cmd=stress_cmd)
