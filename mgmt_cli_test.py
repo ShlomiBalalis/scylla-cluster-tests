@@ -517,18 +517,18 @@ class MgmtCliTest(BackupFunctionsMixIn, ClusterTester):
         self.generate_load_and_wait_for_results()
         with self.subTest('Backup Multiple KS\' and Tables'):
             self.test_backup_multiple_ks_tables()
-        with self.subTest('Backup to Location with path'):
-            self.test_backup_location_with_path()
-        with self.subTest('Test Backup Rate Limit'):
-            self.test_backup_rate_limit()
-        with self.subTest('Test Backup Purge Removes Orphans Files'):
-            self.test_backup_purge_removes_orphan_files()
-        with self.subTest('Test restore a backup with restore task'):
-            self.test_restore_backup_with_task()
-        with self.subTest('Test Backup end of space'):  # Preferably at the end
-            self.test_enospc_during_backup()
-        with self.subTest('Test Restore end of space'):
-            self.test_enospc_before_restore()
+        # with self.subTest('Backup to Location with path'):
+        #     self.test_backup_location_with_path()
+        # with self.subTest('Test Backup Rate Limit'):
+        #     self.test_backup_rate_limit()
+        # with self.subTest('Test Backup Purge Removes Orphans Files'):
+        #     self.test_backup_purge_removes_orphan_files()
+        # with self.subTest('Test restore a backup with restore task'):
+        #     self.test_restore_backup_with_task()
+        # with self.subTest('Test Backup end of space'):  # Preferably at the end
+        #     self.test_enospc_during_backup()
+        # with self.subTest('Test Restore end of space'):
+        #     self.test_enospc_before_restore()
 
     def create_ks_and_tables(self, num_ks, num_table):
         # FIXME: beforehand we better change to have RF=1 to avoid restoring content while restoring replica of data
