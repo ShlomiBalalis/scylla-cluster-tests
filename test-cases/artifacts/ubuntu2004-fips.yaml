@@ -10,7 +10,7 @@ n_db_nodes: 1
 n_loaders: 0
 n_monitor_nodes: 0
 nemesis_class_name: 'NoOpMonkey'
-region_name: 'us-east-1'
+region_name: 'eu-west-1'
 scylla_linux_distro: 'ubuntu-focal'
 scylla_repo: 'http://downloads.scylladb.com/unstable/scylla/master/deb/unified/latest/scylladb-master/scylla.list'
 use_preinstalled_scylla: false
