@@ -15,7 +15,7 @@ scylla_linux_distro: 'ubuntu-focal'
 scylla_repo: 'http://downloads.scylladb.com/unstable/scylla/master/deb/unified/latest/scylladb-master/scylla.list'
 use_preinstalled_scylla: false
 ami_db_scylla_user: 'ubuntu'
-client_encrypt: true
+client_encrypt: false
 test_duration: 60
 user_prefix: 'artifacts-ubuntu2004-fips'
 aws_fallback_to_next_availability_zone: true
