@@ -125,7 +125,7 @@ class BackupFunctionsMixIn(LoaderUtilsMixin):
 
     @staticmethod
     def download_from_gs(node, source, destination):
-        node.remoter.sudo(f"gsutil cp '{source.replace('gcs://', 'gs://')}' '{destination}'")
+        node.remoter.run(f"gsutil cp '{source.replace('gcs://', 'gs://')}' '{destination}'")
 
     def download_from_azure(self, node, source, destination):
         # azure://<bucket>/<path> -> https://<account>.blob.core.windows.net/<bucket>/<path>?SAS
