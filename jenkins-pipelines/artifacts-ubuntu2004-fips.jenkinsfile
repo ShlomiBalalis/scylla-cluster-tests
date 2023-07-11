@@ -8,6 +8,6 @@ artifactsPipeline(
     backend: 'aws',
     provision_type: 'spot',
 
-    timeout: [time: 45, unit: 'MINUTES'],
+    timeout: [time: 360, unit: 'MINUTES'],
     post_behavior_db_nodes: 'destroy'
 )
