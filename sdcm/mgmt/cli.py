@@ -953,7 +953,7 @@ class ScyllaManagerTool(ScyllaManagerBase):
         return [[n, n.ip_address] for n in db_cluster.nodes]
 
     def add_cluster(self, name, host=None, db_cluster=None, client_encrypt=None, disable_automatic_repair=True,  # pylint: disable=too-many-arguments
-                    auth_token=None):
+                    auth_token=None, credentials=None):
         """
         :param name: cluster name
         :param host: cluster node IP
@@ -1001,6 +1001,9 @@ class ScyllaManagerTool(ScyllaManagerBase):
                 if client_encrypt or db_node.is_client_encrypt:
                     cmd += " --ssl-user-cert-file {} --ssl-user-key-file {}".format(SSL_USER_CERT_FILE,
                                                                                     SSL_USER_KEY_FILE)
+        if credentials:
+            username, password = credentials
+            cmd += f" --username {username} --password {password}"
         res_cluster_add = self.sctool.run(cmd, parse_table_res=False)
         if not res_cluster_add or 'Cluster added' not in res_cluster_add.stderr:
             raise ScyllaManagerError("Encountered an error on 'sctool cluster add' command response: {}".format(
