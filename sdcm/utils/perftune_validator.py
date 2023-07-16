@@ -14,7 +14,7 @@ from sdcm.sct_events.system import PerftuneResultEvent
 
 PERFTUNE_LOCATION = "/opt/scylladb/scripts/perftune.py"
 TEMP_PERFTUNE_YAML_PATH = "/tmp/perftune.yaml"
-PERFTUNE_EXPECTED_RESULTS_PATH = "defaults/perftune_results.json"
+PERFTUNE_EXPECTED_RESULTS_PATH = "defaults/perftune_results_new.json"
 
 
 # "aws": {
@@ -27,14 +27,14 @@ def get_number_of_cpu_cores(node) -> int:
 
 
 class PerftuneExpectedResult:
-    def __init__(self, instance_type, nic_name, comparable_scylla_version, is_enterprise):
+    def __init__(self, number_of_cpu_cores, nic_name, comparable_scylla_version, is_enterprise):
         self.nic_name = nic_name
         self.comparable_scylla_version = comparable_scylla_version
         self.is_enterprise = is_enterprise
 
         with open(PERFTUNE_EXPECTED_RESULTS_PATH, encoding="utf-8") as expected_results_file:
             expected_results_dict_all_instances = json.loads(expected_results_file.read())
-        self.expected_results_for_instance = expected_results_dict_all_instances.get(instance_type)
+        self.expected_results_for_instance = expected_results_dict_all_instances.get(str(number_of_cpu_cores))
 
     def get_expected_cpu_mask(self) -> str:
         return self.expected_results_for_instance.get("get-cpu-mask")
@@ -43,16 +43,10 @@ class PerftuneExpectedResult:
         return self.expected_results_for_instance.get("get-irq-cpu-mask")
 
     def get_expected_options_file_contents(self) -> dict:
-        # base_result_dict = {"cpu_mask": self.get_expected_cpu_mask(),
-        #                     "tune": ["net"]}
         base_result_dict = self.expected_results_for_instance.get("dump-options-file")
         if (self.is_enterprise and self.comparable_scylla_version >= "2022.2.7")\
                 or self.comparable_scylla_version >= "5.2":
             attach_values = {"nic": [self.nic_name]}
-            # attach_values = {"irq_core_auto_detection_ratio": 16,
-            #                  "irq_cpu_mask": self.get_expected_irq_cpu_mask(),
-            #                  "nic": [self.nic_name],
-            #                  }
         elif (self.is_enterprise and self.comparable_scylla_version >= "2022.1")\
                 or self.comparable_scylla_version >= "5.0":
             attach_values = {"mode": "mq",
@@ -119,7 +113,7 @@ class PerftuneOutputChecker:  # pylint: disable=too-few-public-methods
         nic_name = node.get_nic_devices()[0]
         self.executor = PerftuneExecutor(node, nic_name)
         self.expected_result = PerftuneExpectedResult(
-            node.db_node_instance_type, nic_name, self.comparable_scylla_version, self.is_enterprise)
+            get_number_of_cpu_cores(node), nic_name, self.comparable_scylla_version, self.is_enterprise)
 
     def compare_cpu_mask(self) -> None:
         cpu_mask = self.executor.get_cpu_mask()
