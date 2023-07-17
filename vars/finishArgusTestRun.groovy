@@ -2,7 +2,7 @@
 
 import org.jenkinsci.plugins.workflow.support.steps.build.RunWrapper
 
-def call(Map params, RunWrapper currentBuild) {
+def call(Map params, RunWrapper currentBuild, String instanceType) {
     def test_config = groovy.json.JsonOutput.toJson(params.test_config)
     def test_status = currentBuild.currentResult
 
@@ -11,7 +11,19 @@ def call(Map params, RunWrapper currentBuild) {
     echo "Finishing Argus test run ..."
 
     export SCT_CLUSTER_BACKEND="${params.backend}"
-    export SCT_CONFIG_FILES="${test_config}"
+    export SCT_CONFIG_FILES=${test_config}
+
+    case "${params.backend}" in
+        "aws")
+            export SCT_INSTANCE_TYPE_DB="${instanceType}"
+            ;;
+        "gce")
+            export SCT_GCE_INSTANCE_TYPE_DB="${instanceType}"
+            ;;
+        "azure")
+            export SCT_AZURE_INSTANCE_TYPE_DB="${instanceType}"
+            ;;
+    esac
 
     ./docker/env/hydra.sh finish-argus-test-run --jenkins-status "${test_status}"
 

@@ -129,7 +129,7 @@ def call(Map pipelineParams) {
                                                     wrap([$class: 'BuildUser']) {
                                                         dir('scylla-cluster-tests') {
                                                             timeout(time: 5, unit: 'MINUTES') {
-                                                                createArgusTestRun(params)
+                                                                createArgusTestRun(params, instance_type)
                                                             }
                                                         }
                                                     }
@@ -264,7 +264,7 @@ def call(Map pipelineParams) {
                                                     wrap([$class: 'BuildUser']) {
                                                         dir('scylla-cluster-tests') {
                                                             timeout(time: 5, unit: 'MINUTES') {
-                                                                finishArgusTestRun(params, currentBuild)
+                                                                finishArgusTestRun(params, currentBuild, instance_type)
                                                             }
                                                         }
                                                     }
