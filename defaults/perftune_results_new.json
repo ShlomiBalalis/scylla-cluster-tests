@@ -30,13 +30,13 @@
     "dump-options-file": {"cpu_mask": "0xffffffff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0xffffffff", "tune": ["net"]}
   },
   "64": {
-    "get-cpu-mask": "0xfffefffe,0xfffefffe",
-    "get-irq-cpu-mask": "0x00010001,0x00010001",
+    "get-cpu-mask": "0xfffffffc,0xfffffffc",
+    "get-irq-cpu-mask": "0x00000003,0x00000003",
     "dump-options-file": {"cpu_mask": "0xffffffff,0xffffffff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0xffffffff,0xffffffff", "tune": ["net"]}
   },
-  "72": {
-    "get-cpu-mask": "0x000000ff,0xff3fffcf,0xfff3fffc",
-    "get-irq-cpu-mask": "0x00c00030,0x000c0003",
-    "dump-options-file": {"cpu_mask": "0x000000ff,0xffffffff,0xffffffff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0x000000ff,0xffffffff,0xffffffff", "tune": ["net"]}
+  "128": {
+    "get-cpu-mask": "0xfffffffc,0xfffffffc,0xfffffffc,0xfffffffc",
+    "get-irq-cpu-mask": "0x00000003,0x00000003,0x00000003,0x00000003",
+    "dump-options-file": {"cpu_mask": "0xffffffff,0xffffffff,0xffffffff,0xffffffff", "irq_core_auto_detection_ratio": 16, "irq_cpu_mask": "0xffffffff,0xffffffff,0xffffffff,0xffffffff", "tune": ["net"]}
   }
 }
