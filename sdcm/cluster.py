@@ -4692,8 +4692,9 @@ class BaseScyllaCluster:  # pylint: disable=too-many-public-methods, too-many-in
         if host_ip is None:
             host_ip = self.nodes[0].ip_address
         credentials = self.get_db_auth()  # pylint: disable=no-member
-        return manager_tool.add_cluster(name=cluster_name, host=host_ip, auth_token=self.scylla_manager_auth_token,
-                                        credentials=credentials)
+        return manager_tool.add_cluster(name=cluster_name, host=host_ip,
+                                        client_encrypt=self.params.get('client_encrypt'),
+                                        auth_token=self.scylla_manager_auth_token, credentials=credentials)
 
     def is_additional_data_volume_used(self) -> bool:
         """return true if additional data volume is configured
