@@ -84,7 +84,7 @@ class PerftuneExecutor:
         self.nic_name = nic_name
 
     def get_cpu_mask(self) -> str:
-        result = self.node.remoter.run(f"{PERFTUNE_LOCATION} --tune net --nic {self.nic_name} --get-cpu-mask")
+        result = self.node.remoter.run(f"{PERFTUNE_LOCATION} --tune net --nic {self.nic_name} --get-cpu-mask-quiet")
         return result.stdout.strip()
 
     def get_irq_cpu_mask(self) -> str:
