@@ -67,7 +67,7 @@ class PerftuneExecutor:
             return "sq"
         elif number_of_cores <= 32:
             return "sq_split"
-        raise ValueError(f"Unsupported amount of CPU cores for 'mode' param: {number_of_cores}")
+        return None
 
     def get_options_file_contents(self, use_temp_file=False, mode="", override_irq_cpu_mask="") -> dict:
         cmd = f"{PERFTUNE_LOCATION} --tune net --nic {self.nic_name} --dump-options-file"
@@ -153,7 +153,7 @@ class PerftuneOutputChecker:  # pylint: disable=too-few-public-methods
             numerical_values.append(num_value)
         return numerical_values
 
-    def _compare_option_file_with_overridden_irq_cpu_mask_param(self, option_file_dict) -> None:
+    def compare_option_file_with_overridden_irq_cpu_mask_param(self, option_file_dict) -> None:
         current_cpu_mask = option_file_dict["cpu_mask"]
         cpu_mask_int_values = self.get_mask_int_values(current_cpu_mask)
         random_irq_cpu_mask_string = self._generate_new_irq_cpu_mask_string(cpu_mask_int_values)
@@ -165,35 +165,6 @@ class PerftuneOutputChecker:  # pylint: disable=too-few-public-methods
                         f"output of the 'dump-options-file' command on node {self.node}",
                 severity=Severity.ERROR).publish()
 
-    def _get_current_mode(self) -> str:
-        if self.expected_result.get_expected_cpu_mask() == self.expected_result.get_expected_irq_cpu_mask():
-            return "mq"
-        return "sq"
-
-    def _compare_option_file_with_overridden_mode_param(self, option_file_dict) -> None:
-        current_mode = self._get_current_mode()
-        if current_mode == "mq":
-            alternative_mode = "sq"
-            altered_option_file_contents = self.executor.get_options_file_contents(mode=alternative_mode)
-            if altered_option_file_contents["cpu_mask"] == option_file_dict["irq_cpu_mask"]:
-                PerftuneResultEvent(
-                    message=f"On {self.node}, when using the {alternative_mode} mode, the irq_cpu_mask is expected to "
-                            f"be different from the cpu_mask, but they're identical."
-                            f"\ndump-options-file output: '{altered_option_file_contents}'",
-                    severity=Severity.ERROR).publish()
-        else:
-            alternative_mode = "mq"
-            altered_option_file_contents = self.executor.get_options_file_contents(mode=alternative_mode)
-            if altered_option_file_contents["cpu_mask"] != option_file_dict["irq_cpu_mask"]:
-                PerftuneResultEvent(
-                    message=f"On {self.node}, when using the {alternative_mode} mode, the irq_cpu_mask is expected to "
-                            f"be equal to the cpu_mask, but they're different."
-                            f"\ndump-options-file output: '{altered_option_file_contents}'",
-                    severity=Severity.ERROR).publish()
-
-    def compare_option_file_with_overridden_parameter(self, option_file_dict) -> None:
-        self._compare_option_file_with_overridden_irq_cpu_mask_param(option_file_dict)
-
     def compare_perftune_results(self) -> None:
         PerftuneResultEvent(
             message="Checking the output of perftune.py",
@@ -201,12 +172,16 @@ class PerftuneOutputChecker:  # pylint: disable=too-few-public-methods
         try:
             self.compare_cpu_mask()
             self.compare_irq_cpu_mask()
-            # todo: replace name option_file_dict
-            option_file_dict = self.executor.get_options_file_contents(mode=self.executor.get_default_mode())
+            default_mode = self.executor.get_default_mode()
+            override_irq_cpu_mask = None
+            if not default_mode:
+                override_irq_cpu_mask = self.expected_result.get_expected_irq_cpu_mask()
+            option_file_dict = self.executor.get_options_file_contents(mode=default_mode,
+                                                                       override_irq_cpu_mask=override_irq_cpu_mask)
             self.compare_default_option_file(option_file_dict)
             self.executor.create_temp_perftune_yaml(yaml_dict=option_file_dict)
             self.compare_option_file_yaml_with_temp_yaml_copy(option_file_dict)
-            self.compare_option_file_with_overridden_parameter(option_file_dict)
+            self.compare_option_file_with_overridden_irq_cpu_mask_param(option_file_dict)
         except Exception as error:  # pylint: disable=broad-except
             PerftuneResultEvent(
                 message=f"Unexpected error when verifying the output of Perftune: {error}",
