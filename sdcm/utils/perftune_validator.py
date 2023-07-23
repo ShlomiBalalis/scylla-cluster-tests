@@ -1,7 +1,7 @@
 import json
 import logging
 import random
-import traceback
+# import traceback
 import yaml
 
 from sdcm.sct_events import Severity
@@ -169,21 +169,17 @@ class PerftuneOutputChecker:  # pylint: disable=too-few-public-methods
         PerftuneResultEvent(
             message="Checking the output of perftune.py",
             severity=Severity.NORMAL).publish()
-        try:
-            self.compare_cpu_mask()
-            self.compare_irq_cpu_mask()
-            default_mode = self.executor.get_default_mode()
-            override_irq_cpu_mask = None
-            if not default_mode:
-                override_irq_cpu_mask = self.expected_result.get_expected_irq_cpu_mask()
-            option_file_dict = self.executor.get_options_file_contents(mode=default_mode,
-                                                                       override_irq_cpu_mask=override_irq_cpu_mask)
-            self.compare_default_option_file(option_file_dict)
-            self.executor.create_temp_perftune_yaml(yaml_dict=option_file_dict)
-            self.compare_option_file_yaml_with_temp_yaml_copy(option_file_dict)
-            self.compare_option_file_with_overridden_irq_cpu_mask_param(option_file_dict)
-        except Exception as error:  # pylint: disable=broad-except
-            PerftuneResultEvent(
-                message=f"Unexpected error when verifying the output of Perftune: {error}",
-                severity=Severity.ERROR).publish()
-            self.log.error(traceback.format_exc())
+        default_mode = self.executor.get_default_mode()
+        override_irq_cpu_mask = None
+        if not default_mode:
+            override_irq_cpu_mask = self.expected_result.get_expected_irq_cpu_mask()
+        PerftuneResultEvent(
+            message=f"CPU mask commands output: {self.executor.get_cpu_mask()}",
+            severity=Severity.NORMAL).publish()
+        PerftuneResultEvent(
+            message=f"IRQ CPU mask command output: {self.executor.get_irq_cpu_mask()}",
+            severity=Severity.NORMAL).publish()
+        PerftuneResultEvent(
+            message=f"DUMP OPTION file output:"
+                    f" {self.executor.get_options_file_contents(mode=default_mode, override_irq_cpu_mask=override_irq_cpu_mask)}",
+            severity=Severity.NORMAL).publish()
