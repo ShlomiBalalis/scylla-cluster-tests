@@ -18,7 +18,7 @@ PERFTUNE_EXPECTED_RESULTS_PATH = "defaults/perftune_results.json"
 
 def get_machine_architecture_type(node):
     result = node.remoter.run("uname -m")
-    return result.stdout
+    return result.stdout.strip()
 
 
 def get_number_of_cpu_cores(node) -> int:
