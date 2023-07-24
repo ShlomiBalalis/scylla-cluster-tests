@@ -26,7 +26,7 @@ def get_number_of_cpu_cores(node) -> int:
 
 
 def get_machine_architecture_type(node):
-    result = node.remoter.run("grep -c ^processor /proc/cpuinfo")
+    result = node.remoter.run("uname -m")
     return result.stdout
 
 
