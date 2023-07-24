@@ -104,7 +104,6 @@ from sdcm.utils.version_utils import (
     ComparableScyllaVersion,
     SCYLLA_VERSION_RE,
 )
-from sdcm.utils.perftune_validator import PerftuneOutputChecker
 from sdcm.sct_events import Severity
 from sdcm.sct_events.base import LogEvent, add_severity_limit_rules, max_severity
 from sdcm.sct_events.health import ClusterHealthValidatorEvent
@@ -4437,9 +4436,6 @@ class BaseScyllaCluster:  # pylint: disable=too-many-public-methods, too-many-in
         nodes_status = node.get_nodes_status()
         check_nodes_status(nodes_status=nodes_status, current_node=node)
 
-        perftune_checker = PerftuneOutputChecker(node, self.params.get("cluster_backend"))
-        perftune_checker.compare_perftune_results()
-        # TODO: move to artifact test
         self.clean_replacement_node_options(node)
 
     def install_scylla_manager(self, node):
