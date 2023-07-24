@@ -88,7 +88,7 @@ class PerftuneExecutor:
 
     def create_temp_perftune_yaml(self, yaml_dict) -> None:
         self.node.remoter.run(f"touch {TEMP_PERFTUNE_YAML_PATH}")
-        with self.node._remote_yaml(path=TEMP_PERFTUNE_YAML_PATH) as temp_yaml:
+        with self.node._remote_yaml(path=TEMP_PERFTUNE_YAML_PATH) as temp_yaml:  # pylint: disable=protected-access
             temp_yaml.update(yaml_dict)
 
 
