@@ -16,7 +16,9 @@ TEMP_PERFTUNE_YAML_PATH = "/tmp/perftune.yaml"
 PERFTUNE_EXPECTED_RESULTS_PATH = "defaults/perftune_results.json"
 
 
-# "aws": {
+def get_machine_architecture_type(node):
+    result = node.remoter.run("uname -m")
+    return result.stdout
 
 
 def get_number_of_cpu_cores(node) -> int:
@@ -25,9 +27,15 @@ def get_number_of_cpu_cores(node) -> int:
     return cores_num
 
 
-def get_machine_architecture_type(node):
-    result = node.remoter.run("uname -m")
-    return result.stdout
+def get_default_mode(node):
+    number_of_cores = get_number_of_cpu_cores(node=node)
+    if number_of_cores <= 4:
+        return "mq"
+    elif number_of_cores <= 8:
+        return "sq"
+    elif number_of_cores <= 32:
+        return "sq_split"
+    return None
 
 
 class PerftuneExpectedResult:
@@ -63,16 +71,6 @@ class PerftuneExecutor:
     def get_irq_cpu_mask(self) -> str:
         result = self.node.remoter.run(f"{PERFTUNE_LOCATION} --tune net --nic {self.nic_name} --get-irq-cpu-mask")
         return result.stdout.strip()
-
-    def get_default_mode(self):
-        number_of_cores = get_number_of_cpu_cores(node=self.node)
-        if number_of_cores <= 4:
-            return "mq"
-        elif number_of_cores <= 8:
-            return "sq"
-        elif number_of_cores <= 32:
-            return "sq_split"
-        return None
 
     def get_options_file_contents(self, use_temp_file=False, mode="", override_irq_cpu_mask="") -> dict:
         cmd = f"{PERFTUNE_LOCATION} --tune net --nic {self.nic_name} --dump-options-file"
@@ -178,7 +176,7 @@ class PerftuneOutputChecker:  # pylint: disable=too-few-public-methods
         try:
             self.compare_cpu_mask()
             self.compare_irq_cpu_mask()
-            default_mode = self.executor.get_default_mode()
+            default_mode = get_default_mode(self.node)
             override_irq_cpu_mask = None
             if not default_mode:
                 override_irq_cpu_mask = self.expected_result.get_expected_irq_cpu_mask()
