@@ -25,13 +25,18 @@ def get_number_of_cpu_cores(node) -> int:
     return cores_num
 
 
+def get_machine_architecture_type(node):
+    result = node.remoter.run("grep -c ^processor /proc/cpuinfo")
+    return result.stdout
+
+
 class PerftuneExpectedResult:
-    def __init__(self, cluster_backend, number_of_cpu_cores, nic_name):
+    def __init__(self, cluster_backend, number_of_cpu_cores, nic_name, architecture="x86_64"):
         self.nic_name = nic_name
         with open(PERFTUNE_EXPECTED_RESULTS_PATH, encoding="utf-8") as expected_results_file:
             expected_results_dict_all_instances = json.loads(expected_results_file.read())
         self.expected_results_for_instance = \
-            expected_results_dict_all_instances[cluster_backend][str(number_of_cpu_cores)]
+            expected_results_dict_all_instances[cluster_backend][architecture][str(number_of_cpu_cores)]
 
     def get_expected_cpu_mask(self) -> str:
         return self.expected_results_for_instance.get("get-cpu-mask")
@@ -93,7 +98,8 @@ class PerftuneOutputChecker:  # pylint: disable=too-few-public-methods
         self.node = node
         nic_name = node.get_nic_devices()[0]
         self.executor = PerftuneExecutor(node, nic_name)
-        self.expected_result = PerftuneExpectedResult(cluster_backend, get_number_of_cpu_cores(node), nic_name)
+        self.expected_result = PerftuneExpectedResult(cluster_backend, get_number_of_cpu_cores(node), nic_name,
+                                                      architecture=get_machine_architecture_type(node))
 
     def compare_cpu_mask(self) -> None:
         cpu_mask = self.executor.get_cpu_mask()
