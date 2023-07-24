@@ -283,130 +283,129 @@ class ArtifactsTest(ClusterTester):  # pylint: disable=too-many-public-methods
     # pylint: disable=too-many-statements,too-many-branches
     def test_scylla_service(self):
         backend = self.params.get("cluster_backend")
-        print(backend)
 
-        # if backend == "aws":
-        #     with self.subTest("check ENA support"):
-        #         assert self.node.ena_support, "ENA support is not enabled"
-        #
-        # with self.subTest("verify write_back_cache perftune parameter"):
-        #     self.verify_write_back_cache_param()
-        #
-        # with self.subTest("verify write cache for NVMe devices"):
-        #     self.verify_nvme_write_cache()
-        #
-        # if backend != "docker" and not self.params.get("nonroot_offline_install"):
-        #     with self.subTest("verify XFS online discard enabled"):
-        #         self.verify_xfs_online_discard_enabled()
-        #
-        # if backend == "gce":
-        #     with self.subTest("verify users"):
-        #         self.verify_users()
-        #
-        # expected_housekeeping_status_code = 'cr' if backend == "docker" else 'r'
-        #
-        # if self.params.get("use_preinstalled_scylla") and backend != "docker":
-        #     with self.subTest("check the cluster name"):
-        #         self.check_cluster_name()
-        #
-        # with self.subTest('verify snitch'):
-        #     self.verify_snitch(backend_name=backend)
-        #
-        # with self.subTest('verify node health'):
-        #     self.verify_node_health()
-        #
-        # with self.subTest("check Scylla server after installation"):
-        #     self.check_scylla()
-        #
-        # with self.subTest("check cqlsh installation"):
-        #     self.check_cqlsh()
-        #
-        # # We don't install any time sync service in docker, so the test is unnecessary:
-        # # https://github.com/scylladb/scylla/tree/master/dist/docker/etc/supervisord.conf.d
-        # if backend != "docker":
-        #     with self.subTest("check if scylla unnecessarily installed a time synchronization service"):
-        #         # Checks https://github.com/scylladb/scylla/issues/8339
-        #         # If the instance already has systemd-timesyncd
-        #         is_timesyncd_service_installed = self.check_service_existence(service_name="systemd-timesyncd")
-        #         # Do note: On Redhat based distributions the services are named ntpd and chronyd, while on debian based
-        #         # distributions they're named ntp and chrony.
-        #         if self.node.is_rhel_like():
-        #             is_ntp_service_installed = self.check_service_existence(service_name="ntpd")
-        #             is_chrony_service_installed = self.check_service_existence(service_name="chronyd")
-        #         else:
-        #             is_ntp_service_installed = self.check_service_existence(service_name="ntp")
-        #             is_chrony_service_installed = self.check_service_existence(service_name="chrony")
-        #         try:
-        #             if is_timesyncd_service_installed:
-        #                 assert not is_ntp_service_installed, \
-        #                     "systemd-timesyncd is already installed, yet scylla installed ntp service on top of it"
-        #                 assert not is_chrony_service_installed, \
-        #                     "systemd-timesyncd is already installed, yet scylla installed chrony service on top of it"
-        #             elif not self.params.get("unified_package"):
-        #                 assert is_ntp_service_installed or is_chrony_service_installed, \
-        #                     "systemd-timesyncd is not installed on the instance, yet Scylla did not install ntp or " \
-        #                     "chrony services as a replacement"
-        #             else:
-        #                 # https://github.com/scylladb/scylla/issues/10608#issuecomment-1135770570
-        #                 # Scylla doesn't install any time sync service when it's an offline installation,
-        #                 # so if there's no time sync services active after the scylla installation, it's fine.
-        #                 # However, in such scenario a warning message should be printed during the scylla installation
-        #                 self.log.warning("No time sync service was installed. "
-        #                                  "Passable since it's an offline installation.")
-        #         except AssertionError:
-        #             full_list = self.node.remoter.run('systemctl list-units --full').stdout.strip()
-        #             self.log.warning("Seems that there was an issue with ntp check. Here's the full list of services "
-        #                              "active on the node: %s", full_list)
-        #             raise
-        #
-        #     # TODO: implement after the new provision will be added
-        #     # Task: https://trello.com/c/BIdIUwyT/4096-housekeeping-implemented-a-test-that-checks-i-value-when-scylla-
-        #     # is-first-installed
-        #
-        #     # Scylla service is stopping/starting after installation and re-configuration.
-        #     # To validate version after installation, we need to perform validation before re-config.
-        #     # For that the test should be changed to be able to call "add_nodes" function from BaseCluster.
-        #     # if not self.node.is_nonroot_install:
-        #     #     self.log.info("Validate version after install")
-        #     #     self.check_housekeeping_service_status()
-        #     #     self.check_scylla_version_in_housekeepingdb(prev_id=0,
-        #     #                                                 expected_status_code='i',
-        #     #                                                 new_row_expected=False,
-        #     #                                                 backend=backend)
-        #
-        # version_id_after_stop = 0
-        # with self.subTest("check Scylla server after stop/start"):
-        #     self.node.stop_scylla(verify_down=True)
-        #     self.node.start_scylla(verify_up=True)
-        #
-        #     # Scylla service has been stopped/started after installation and re-configuration.
-        #     # So we don't need to stop and to start it again
-        #     self.check_scylla()
-        #
-        #     if not self.node.is_nonroot_install:
-        #         self.log.info("Validate version after stop/start")
-        #         self.check_housekeeping_service_status(backend=backend)
-        #         version_id_after_stop = self.check_scylla_version_in_housekeepingdb(
-        #             prev_id=0,
-        #             expected_status_code=expected_housekeeping_status_code,
-        #             new_row_expected=False,
-        #             backend=backend)
-        #
-        # with self.subTest("check Scylla server after restart"):
-        #     self.node.restart_scylla(verify_up_after=True)
-        #     self.check_scylla()
-        #
-        #     if not self.node.is_nonroot_install:
-        #         self.log.info("Validate version after restart")
-        #         self.check_housekeeping_service_status(backend=backend)
-        #         self.check_scylla_version_in_housekeepingdb(prev_id=version_id_after_stop,
-        #                                                     expected_status_code=expected_housekeeping_status_code,
-        #                                                     new_row_expected=True,
-        #                                                     backend=backend)
-        #
-        # if backend == 'docker':
-        #     with self.subTest("Check docker latest tags"):
-        #         self.verify_docker_latest_match_release()
+        if backend == "aws":
+            with self.subTest("check ENA support"):
+                assert self.node.ena_support, "ENA support is not enabled"
+
+        with self.subTest("verify write_back_cache perftune parameter"):
+            self.verify_write_back_cache_param()
+
+        with self.subTest("verify write cache for NVMe devices"):
+            self.verify_nvme_write_cache()
+
+        if backend != "docker" and not self.params.get("nonroot_offline_install"):
+            with self.subTest("verify XFS online discard enabled"):
+                self.verify_xfs_online_discard_enabled()
+
+        if backend == "gce":
+            with self.subTest("verify users"):
+                self.verify_users()
+
+        expected_housekeeping_status_code = 'cr' if backend == "docker" else 'r'
+
+        if self.params.get("use_preinstalled_scylla") and backend != "docker":
+            with self.subTest("check the cluster name"):
+                self.check_cluster_name()
+
+        with self.subTest('verify snitch'):
+            self.verify_snitch(backend_name=backend)
+
+        with self.subTest('verify node health'):
+            self.verify_node_health()
+
+        with self.subTest("check Scylla server after installation"):
+            self.check_scylla()
+
+        with self.subTest("check cqlsh installation"):
+            self.check_cqlsh()
+
+        # We don't install any time sync service in docker, so the test is unnecessary:
+        # https://github.com/scylladb/scylla/tree/master/dist/docker/etc/supervisord.conf.d
+        if backend != "docker":
+            with self.subTest("check if scylla unnecessarily installed a time synchronization service"):
+                # Checks https://github.com/scylladb/scylla/issues/8339
+                # If the instance already has systemd-timesyncd
+                is_timesyncd_service_installed = self.check_service_existence(service_name="systemd-timesyncd")
+                # Do note: On Redhat based distributions the services are named ntpd and chronyd, while on debian based
+                # distributions they're named ntp and chrony.
+                if self.node.is_rhel_like():
+                    is_ntp_service_installed = self.check_service_existence(service_name="ntpd")
+                    is_chrony_service_installed = self.check_service_existence(service_name="chronyd")
+                else:
+                    is_ntp_service_installed = self.check_service_existence(service_name="ntp")
+                    is_chrony_service_installed = self.check_service_existence(service_name="chrony")
+                try:
+                    if is_timesyncd_service_installed:
+                        assert not is_ntp_service_installed, \
+                            "systemd-timesyncd is already installed, yet scylla installed ntp service on top of it"
+                        assert not is_chrony_service_installed, \
+                            "systemd-timesyncd is already installed, yet scylla installed chrony service on top of it"
+                    elif not self.params.get("unified_package"):
+                        assert is_ntp_service_installed or is_chrony_service_installed, \
+                            "systemd-timesyncd is not installed on the instance, yet Scylla did not install ntp or " \
+                            "chrony services as a replacement"
+                    else:
+                        # https://github.com/scylladb/scylla/issues/10608#issuecomment-1135770570
+                        # Scylla doesn't install any time sync service when it's an offline installation,
+                        # so if there's no time sync services active after the scylla installation, it's fine.
+                        # However, in such scenario a warning message should be printed during the scylla installation
+                        self.log.warning("No time sync service was installed. "
+                                         "Passable since it's an offline installation.")
+                except AssertionError:
+                    full_list = self.node.remoter.run('systemctl list-units --full').stdout.strip()
+                    self.log.warning("Seems that there was an issue with ntp check. Here's the full list of services "
+                                     "active on the node: %s", full_list)
+                    raise
+
+            # TODO: implement after the new provision will be added
+            # Task: https://trello.com/c/BIdIUwyT/4096-housekeeping-implemented-a-test-that-checks-i-value-when-scylla-
+            # is-first-installed
+
+            # Scylla service is stopping/starting after installation and re-configuration.
+            # To validate version after installation, we need to perform validation before re-config.
+            # For that the test should be changed to be able to call "add_nodes" function from BaseCluster.
+            # if not self.node.is_nonroot_install:
+            #     self.log.info("Validate version after install")
+            #     self.check_housekeeping_service_status()
+            #     self.check_scylla_version_in_housekeepingdb(prev_id=0,
+            #                                                 expected_status_code='i',
+            #                                                 new_row_expected=False,
+            #                                                 backend=backend)
+
+        version_id_after_stop = 0
+        with self.subTest("check Scylla server after stop/start"):
+            self.node.stop_scylla(verify_down=True)
+            self.node.start_scylla(verify_up=True)
+
+            # Scylla service has been stopped/started after installation and re-configuration.
+            # So we don't need to stop and to start it again
+            self.check_scylla()
+
+            if not self.node.is_nonroot_install:
+                self.log.info("Validate version after stop/start")
+                self.check_housekeeping_service_status(backend=backend)
+                version_id_after_stop = self.check_scylla_version_in_housekeepingdb(
+                    prev_id=0,
+                    expected_status_code=expected_housekeeping_status_code,
+                    new_row_expected=False,
+                    backend=backend)
+
+        with self.subTest("check Scylla server after restart"):
+            self.node.restart_scylla(verify_up_after=True)
+            self.check_scylla()
+
+            if not self.node.is_nonroot_install:
+                self.log.info("Validate version after restart")
+                self.check_housekeeping_service_status(backend=backend)
+                self.check_scylla_version_in_housekeepingdb(prev_id=version_id_after_stop,
+                                                            expected_status_code=expected_housekeeping_status_code,
+                                                            new_row_expected=True,
+                                                            backend=backend)
+
+        if backend == 'docker':
+            with self.subTest("Check docker latest tags"):
+                self.verify_docker_latest_match_release()
 
     def get_email_data(self):
         self.log.info("Prepare data for email")
