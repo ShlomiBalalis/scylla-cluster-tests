@@ -31,7 +31,7 @@ class PerftuneExpectedResult:
         with open(PERFTUNE_EXPECTED_RESULTS_PATH, encoding="utf-8") as expected_results_file:
             expected_results_dict_all_instances = json.loads(expected_results_file.read())
         self.expected_results_for_instance = \
-            expected_results_dict_all_instances[cluster_backend][str(number_of_cpu_cores)]
+            expected_results_dict_all_instances[cluster_backend].get(str(number_of_cpu_cores))
 
     def get_expected_cpu_mask(self) -> str:
         return self.expected_results_for_instance.get("get-cpu-mask")
@@ -169,16 +169,17 @@ class PerftuneOutputChecker:  # pylint: disable=too-few-public-methods
         PerftuneResultEvent(
             message="Checking the output of perftune.py",
             severity=Severity.NORMAL).publish()
-        default_mode = self.executor.get_default_mode()
-        override_irq_cpu_mask = None
-        if not default_mode:
-            override_irq_cpu_mask = self.expected_result.get_expected_irq_cpu_mask()
         PerftuneResultEvent(
             message=f"CPU mask commands output: {self.executor.get_cpu_mask()}",
             severity=Severity.NORMAL).publish()
+        irq_cpu_mask = self.executor.get_irq_cpu_mask()
         PerftuneResultEvent(
-            message=f"IRQ CPU mask command output: {self.executor.get_irq_cpu_mask()}",
+            message=f"IRQ CPU mask command output: {irq_cpu_mask}",
             severity=Severity.NORMAL).publish()
+        default_mode = self.executor.get_default_mode()
+        override_irq_cpu_mask = None
+        if not default_mode:
+            override_irq_cpu_mask = irq_cpu_mask
         PerftuneResultEvent(
             message=f"DUMP OPTION file output:"
                     f" {self.executor.get_options_file_contents(mode=default_mode, override_irq_cpu_mask=override_irq_cpu_mask)}",
