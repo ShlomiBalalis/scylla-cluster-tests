@@ -113,13 +113,18 @@ class PerftuneOutputChecker:  # pylint: disable=too-few-public-methods
                 severity=Severity.ERROR).publish()
 
     def compare_irq_cpu_mask(self) -> None:
-        irq_cpu_mask = self.executor.get_irq_cpu_mask()
-        if irq_cpu_mask != self.expected_result.get_expected_irq_cpu_mask():
+        try:
+            irq_cpu_mask = self.executor.get_irq_cpu_mask()
+            if irq_cpu_mask != self.expected_result.get_expected_irq_cpu_mask():
+                PerftuneResultEvent(
+                    message=f"Mismatched results when testing the output of the 'get-irq-cpu-mask' command on "
+                            f"{self.node}"
+                            f"\nActual result: '{irq_cpu_mask}'"
+                            f"\nExpected output: '{self.expected_result.get_expected_irq_cpu_mask()}'",
+                    severity=Severity.ERROR).publish()
+        except Exception as err:
             PerftuneResultEvent(
-                message=f"Mismatched results when testing the output of the 'get-irq-cpu-mask' command on "
-                        f"{self.node}"
-                        f"\nActual result: '{irq_cpu_mask}'"
-                        f"\nExpected output: '{self.expected_result.get_expected_irq_cpu_mask()}'",
+                message=f"Error when trying to get the irq cpu mask: {str(err)}",
                 severity=Severity.ERROR).publish()
 
     def compare_default_option_file(self, option_file_dict) -> None:
