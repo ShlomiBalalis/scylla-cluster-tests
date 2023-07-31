@@ -23,6 +23,8 @@ space_node_threshold: 64424
 
 server_encrypt: true
 client_encrypt: true
+authenticator_user: cassandra
+authenticator_password: cassandra
 
 pre_create_schema: True
 sstable_size: 100
