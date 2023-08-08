@@ -1,4 +1,4 @@
-ami_id_db_scylla: 'ami-042e8287309f5df03'  # Canonical, Ubuntu, 20.04 LTS, amd64 focal image build on 2021-02-23
+ami_id_db_scylla: 'ami-08a6392748f548ada'  # Ver Ubuntu 20.04 20230725
 scylla_linux_distro: 'ubuntu-focal'
 use_preinstalled_scylla: false
 ami_db_scylla_user: 'ubuntu'
