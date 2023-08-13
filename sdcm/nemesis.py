@@ -4805,6 +4805,9 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             self.cluster.decommission(new_node)
 
     def disrupt_disable_binary_and_gossip(self):
+        def are_gate_closed_messages_raised():
+            return bool(list(gate_closed_log_reader))
+
         with nodetool_context(node=self.target_node, start_command="disablebinary", end_command="enablebinary"):
             self.target_node.run_nodetool("statusbinary")
             self.target_node.run_nodetool("status")
@@ -4818,6 +4821,15 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
                 self._major_compaction()
         self.target_node.run_nodetool("statusgossip")
         self.target_node.run_nodetool("statusbinary")
+        time.sleep(30)
+        gate_closed_log_reader = self.target_node.follow_system_log(patterns=['gate closed'])
+        gate_closed_appearing = bool(wait_for(func=are_gate_closed_messages_raised,
+                                              timeout=100,
+                                              step=5,
+                                              text="Waiting for 'gate closed' exceptions",
+                                              throw_exc=False))
+        assert not gate_closed_appearing,\
+            "After re-enabling binary and gossip, 'gate closed' messages continue to appear"
 
 
 def disrupt_method_wrapper(method, is_exclusive=False):  # pylint: disable=too-many-statements
