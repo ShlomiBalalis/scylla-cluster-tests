@@ -87,6 +87,18 @@ def call(Map pipelineParams) {
             string(defaultValue: "${pipelineParams.get('k8s_enable_tls', '')}",
                    description: 'if true, enable operator tls, and install haproxy ingress controller',
                    name: 'k8s_enable_tls')
+            string(defaultValue: '',
+                   description: 'If empty - the default manager version will be taken',
+                   name: 'scylla_mgmt_address')
+            string(defaultValue: "",
+                   description: 'If empty - the default scylla manager agent repo will be taken',
+                   name: 'scylla_mgmt_agent_address')
+            string(defaultValue: "",
+                   description: 'master_latest|3.1|3.0',
+                   name: 'manager_version')
+            string(defaultValue: '',
+                   description: '',
+                   name: 'scylla_mgmt_agent_version')
         }
         options {
             timestamps()
@@ -227,7 +239,21 @@ def call(Map pipelineParams) {
                                                             export SCT_UPDATE_DB_PACKAGES="${params.update_db_packages}"
                                                         fi
 
+                                                        if [[ -n "${params.scylla_mgmt_address ? params.scylla_mgmt_address : ''}" ]] ; then
+                                                            export SCT_SCYLLA_MGMT_ADDRESS="${params.scylla_mgmt_address}"
+                                                        fi
 
+                                                        if [[ -n "${params.scylla_mgmt_agent_address ? params.scylla_mgmt_agent_address : ''}" ]] ; then
+                                                            export SCT_SCYLLA_MGMT_AGENT_ADDRESS=${params.scylla_mgmt_agent_address}
+                                                        fi
+
+                                                        if [[ -n "${params.manager_version ? params.manager_version : ''}" ]] ; then
+                                                            export SCT_MANAGER_VERSION="${params.manager_version}"
+                                                        fi
+
+                                                        if [[ -n "${params.scylla_mgmt_agent_version ? params.scylla_mgmt_agent_version : ''}" ]] ; then
+                                                            export SCT_SCYLLA_MGMT_AGENT_VERSION=${params.scylla_mgmt_agent_version}
+                                                        fi
 
                                                         export SCT_POST_BEHAVIOR_DB_NODES="${params.post_behavior_db_nodes}"
                                                         export SCT_POST_BEHAVIOR_LOADER_NODES="${params.post_behavior_loader_nodes}"
