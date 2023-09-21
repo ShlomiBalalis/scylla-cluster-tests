@@ -2775,6 +2775,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             raise UnsupportedNemesis("The restore test only supports AWS at the moment")
         mgr_cluster = self.cluster.get_cluster_manager()
         cluster_backend = self.cluster.params.get('cluster_backend')
+        if cluster_backend == "k8s-eks":
+            cluster_backend = "aws"
         persistent_manager_snapshots_dict = get_persistent_snapshots()
         target_bucket = persistent_manager_snapshots_dict[cluster_backend]["bucket"]
         chosen_snapshot_tag, chosen_snapshot_info = choose_snapshot(persistent_manager_snapshots_dict[cluster_backend])
