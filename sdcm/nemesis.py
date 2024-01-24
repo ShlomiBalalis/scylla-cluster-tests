@@ -2867,6 +2867,8 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             assert restore_task.status == TaskStatus.DONE, \
                 f'Schema restoration of {chosen_snapshot_tag} has failed!'
             self.cluster.restart_scylla()  # After schema restoration, you should restart the nodes
+            self.tester.set_ks_strategy_to_network_and_rf_according_to_cluster(
+                keyspace=chosen_snapshot_info["keyspace_name"])
 
         restore_task = mgr_cluster.create_restore_task(restore_data=True,
                                                        location_list=location_list,
