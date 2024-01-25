@@ -186,6 +186,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
     has_steady_run: bool = False    # flag that signal that nemesis should be run with perf tests with steady run
     schema_changes: bool = False
     config_changes: bool = False
+    tablets_phase_1_supported = True  # flag that signal that the nemesis can run on a tablet-enabled cluster
     free_tier_set: bool = False     # nemesis should be run in FreeTierNemesisSet
     manager_operation: bool = False  # flag that signals that the nemesis uses scylla manager
     delete_rows: bool = False  # A flag denotes a nemesis deletes partitions/rows, generating tombstones.
@@ -432,6 +433,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             config_changes: Optional[bool] = None,
             free_tier_set: Optional[bool] = None,
             manager_operation: Optional[bool] = None,
+            tablets_phase_1_supported: Optional[bool] = None,
     ) -> List[str]:
         return self.get_list_of_methods_by_flags(
             disruptive=disruptive,
@@ -444,6 +446,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             config_changes=config_changes,
             free_tier_set=free_tier_set,
             manager_operation=manager_operation,
+            tablets_phase_1_supported=tablets_phase_1_supported,
         )
 
     def _is_it_on_kubernetes(self) -> bool:
@@ -463,6 +466,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             free_tier_set: Optional[bool] = None,
             sla: Optional[bool] = None,
             manager_operation: Optional[bool] = None,
+            tablets_phase_1_supported: Optional[bool] = None,
     ) -> List[str]:
         subclasses_list = self._get_subclasses(
             disruptive=disruptive,
@@ -476,6 +480,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             free_tier_set=free_tier_set,
             sla=sla,
             manager_operation=manager_operation,
+            tablets_phase_1_supported=tablets_phase_1_supported,
         )
         disrupt_methods_list = []
         for subclass in subclasses_list:
@@ -5144,6 +5149,7 @@ def disrupt_method_wrapper(method, is_exclusive=False):  # pylint: disable=too-m
 class SslHotReloadingNemesis(Nemesis):
     disruptive = False
     config_changes = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_hot_reloading_internode_certificate()
@@ -5179,6 +5185,7 @@ class AddRemoveDcNemesis(Nemesis):
     run_with_gemini = False
     limited = True
     topology_changes = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_add_remove_dc()
@@ -5223,6 +5230,7 @@ class StopStartMonkey(Nemesis):
 class EnableDisableTableEncryptionAwsKmsProviderWithRotationMonkey(Nemesis):
     disruptive = True
     kubernetes = False  # Enable it when EKS SCT code starts supporting the KMS service
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_enable_disable_table_encryption_aws_kms_provider_with_rotation()
@@ -5231,6 +5239,7 @@ class EnableDisableTableEncryptionAwsKmsProviderWithRotationMonkey(Nemesis):
 class EnableDisableTableEncryptionAwsKmsProviderWithoutRotationMonkey(Nemesis):
     disruptive = True
     kubernetes = False  # Enable it when EKS SCT code starts supporting the KMS service
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_enable_disable_table_encryption_aws_kms_provider_without_rotation()
@@ -5239,6 +5248,7 @@ class EnableDisableTableEncryptionAwsKmsProviderWithoutRotationMonkey(Nemesis):
 class EnableDisableTableEncryptionAwsKmsProviderMonkey(Nemesis):
     disruptive = True
     kubernetes = False  # Enable it when EKS SCT code starts supporting the KMS service
+    tablets_phase_1_supported = False
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -5295,6 +5305,7 @@ class DrainerMonkey(Nemesis):
     kubernetes = True
     limited = True
     topology_changes = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_nodetool_drain()
@@ -5303,6 +5314,7 @@ class DrainerMonkey(Nemesis):
 class CorruptThenRepairMonkey(Nemesis):
     disruptive = True
     kubernetes = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_destroy_data_then_repair()
@@ -5311,6 +5323,7 @@ class CorruptThenRepairMonkey(Nemesis):
 class CorruptThenRebuildMonkey(Nemesis):
     disruptive = True
     kubernetes = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_destroy_data_then_rebuild()
@@ -5392,6 +5405,7 @@ class EnospcMonkey(Nemesis):
     disruptive = True
     kubernetes = True
     limited = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_nodetool_enospc()
@@ -5400,6 +5414,7 @@ class EnospcMonkey(Nemesis):
 class EnospcAllNodesMonkey(Nemesis):
     disruptive = True
     kubernetes = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_nodetool_enospc(all_nodes=True)
@@ -5419,6 +5434,7 @@ class TruncateMonkey(Nemesis):
     kubernetes = True
     limited = True
     free_tier_set = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_truncate()
@@ -5938,6 +5954,7 @@ class OperatorNodeReplace(Nemesis):
 class OperatorNodetoolFlushAndReshard(Nemesis):
     disruptive = True
     kubernetes = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_nodetool_flush_and_reshard_on_kubernetes()
@@ -5956,6 +5973,7 @@ class ValidateHintedHandoffShortDowntime(Nemesis):
     disruptive = True
     kubernetes = True
     free_tier_set = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disable_disrupt_validate_hh_short_downtime()
@@ -5975,6 +5993,7 @@ class NodeRestartWithResharding(Nemesis):
     kubernetes = True
     topology_changes = True
     config_changes = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_restart_with_resharding()
@@ -6011,6 +6030,7 @@ class ClusterRollingRestartRandomOrder(Nemesis):
 class SwitchBetweenPasswordAuthAndSaslauthdAuth(Nemesis):
     disruptive = True  # the nemesis has rolling restart
     config_changes = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_switch_between_password_authenticator_and_saslauthd_authenticator_and_back()
@@ -6243,6 +6263,7 @@ class DecommissionStreamingErrMonkey(Nemesis):
 
     disruptive = True
     topology_changes = True
+    tablets_phase_1_supported = False  # includes rebuild
 
     def disrupt(self):
         self.disrupt_decommission_streaming_err()
@@ -6251,6 +6272,7 @@ class DecommissionStreamingErrMonkey(Nemesis):
 class RebuildStreamingErrMonkey(Nemesis):
 
     disruptive = True
+    tablets_phase_1_supported = False  # includes rebuild
 
     def disrupt(self):
         self.disrupt_rebuild_streaming_err()
@@ -6259,6 +6281,7 @@ class RebuildStreamingErrMonkey(Nemesis):
 class RepairStreamingErrMonkey(Nemesis):
 
     disruptive = True
+    tablets_phase_1_supported = False  # includes rebuild
 
     def disrupt(self):
         self.disrupt_repair_streaming_err()
@@ -6347,6 +6370,7 @@ class FreeTierSetMonkey(SisyphusMonkey):
 class SlaIncreaseSharesDuringLoad(Nemesis):
     disruptive = False
     sla = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_sla_increase_shares_during_load()
@@ -6355,6 +6379,7 @@ class SlaIncreaseSharesDuringLoad(Nemesis):
 class SlaDecreaseSharesDuringLoad(Nemesis):
     disruptive = False
     sla = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_sla_decrease_shares_during_load()
@@ -6366,6 +6391,7 @@ class SlaReplaceUsingDetachDuringLoad(Nemesis):
     #  to False when the issue https://github.com/scylladb/scylla-enterprise/issues/2572 will be fixed.
     disruptive = True
     sla = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_replace_service_level_using_detach_during_load()
@@ -6377,6 +6403,7 @@ class SlaReplaceUsingDropDuringLoad(Nemesis):
     #  to False when the issue https://github.com/scylladb/scylla-enterprise/issues/2572 will be fixed.
     disruptive = True
     sla = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_replace_service_level_using_drop_during_load()
@@ -6388,6 +6415,7 @@ class SlaIncreaseSharesByAttachAnotherSlDuringLoad(Nemesis):
     #  to False when the issue https://github.com/scylladb/scylla-enterprise/issues/2572 will be fixed.
     disruptive = True
     sla = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_increase_shares_by_attach_another_sl_during_load()
@@ -6396,6 +6424,7 @@ class SlaIncreaseSharesByAttachAnotherSlDuringLoad(Nemesis):
 class SlaMaximumAllowedSlsWithMaxSharesDuringLoad(Nemesis):
     disruptive = False
     sla = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_maximum_allowed_sls_with_max_shares_during_load()
@@ -6403,6 +6432,7 @@ class SlaMaximumAllowedSlsWithMaxSharesDuringLoad(Nemesis):
 
 class SlaNemeses(Nemesis):
     disruptive = False
+    tablets_phase_1_supported = False
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -6419,6 +6449,7 @@ class CreateIndexNemesis(Nemesis):
     disruptive = False
     schema_changes = True
     free_tier_set = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_create_index()
@@ -6429,6 +6460,7 @@ class AddRemoveMvNemesis(Nemesis):
     disruptive = True
     schema_changes = True
     free_tier_set = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_add_remove_mv()
@@ -6439,6 +6471,7 @@ class ToggleAuditNemesisSyslog(Nemesis):
     schema_changes = True
     config_changes = True
     free_tier_set = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_toggle_audit_syslog()
@@ -6448,6 +6481,7 @@ class BootstrapStreamingErrorNemesis(Nemesis):
 
     disruptive = True
     topology_changes = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_bootstrap_streaming_error()
@@ -6456,6 +6490,7 @@ class BootstrapStreamingErrorNemesis(Nemesis):
 class DisableBinaryGossipExecuteMajorCompaction(Nemesis):
     disruptive = True
     kubernetes = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_disable_binary_gossip_execute_major_compaction()
@@ -6464,6 +6499,7 @@ class DisableBinaryGossipExecuteMajorCompaction(Nemesis):
 class EndOfQuotaNemesis(Nemesis):
     disruptive = True
     config_changes = True
+    tablets_phase_1_supported = False
 
     def disrupt(self):
         self.disrupt_end_of_quota_nemesis()
