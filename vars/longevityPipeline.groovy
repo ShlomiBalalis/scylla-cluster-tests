@@ -92,7 +92,7 @@ def call(Map pipelineParams) {
                    description: 'If empty - the default manager version will be taken',
                    name: 'scylla_mgmt_address')
 
-            string(defaultValue: "${pipelineParams.get('email_recipients', 'qa@scylladb.com')}",
+            string(defaultValue: "${pipelineParams.get('email_recipients', 'balalis@scylladb.com')}",
                    description: 'email recipients of email report',
                    name: 'email_recipients')
 
