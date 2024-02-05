@@ -13,9 +13,9 @@ seeds_num: 3
 
 instance_type_db: 'i4i.4xlarge'
 
-nemesis_class_name: 'SisyphusMonkey'
-nemesis_seed: '032'
-nemesis_interval: 5
+nemesis_class_name: 'TerminateAndRemoveNodeMonkey'  # Maybe GrowShrinkClusterNemesis
+#nemesis_seed: '032'
+nemesis_interval: 15
 nemesis_filter_seeds: false
 
 user_prefix: 'longevity-100gb-4h'
@@ -28,3 +28,4 @@ pre_create_schema: True
 sstable_size: 100
 
 hinted_handoff: 'enabled'
+nemesis_during_prepare: False
