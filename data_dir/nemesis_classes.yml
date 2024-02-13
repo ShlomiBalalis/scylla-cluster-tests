@@ -27,7 +27,7 @@
 - EndOfQuotaNemesis
 - EnospcAllNodesMonkey
 - EnospcMonkey
-- GrowShrinkClusterNemesis
+- GrowClusterNemesis
 - HardRebootNodeMonkey
 - LoadAndStreamMonkey
 - MajorCompactionMonkey

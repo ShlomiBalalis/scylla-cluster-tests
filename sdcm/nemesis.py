@@ -3983,7 +3983,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             self.steady_state_latency()
             self.has_steady_run = True
         self._grow_cluster(rack=None)
-        self._shrink_cluster(rack=None)
+        # self._shrink_cluster(rack=None)
 
     # NOTE: version limitation is caused by the following:
     #       - https://github.com/scylladb/scylla-enterprise/issues/3211
@@ -5218,7 +5218,7 @@ class AddRemoveDcNemesis(Nemesis):
         self.disrupt_add_remove_dc()
 
 
-class GrowShrinkClusterNemesis(Nemesis):
+class GrowClusterNemesis(Nemesis):
     disruptive = True
     kubernetes = True
     topology_changes = True
