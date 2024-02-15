@@ -976,7 +976,7 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):  # pylint: disa
             return
         self.set_ks_strategy_to_network_and_rf_according_to_cluster(keyspace="system_auth", db_cluster=db_cluster)
 
-    def set_ks_strategy_to_network_and_rf_according_to_cluster(self, keyspace, db_cluster=None):
+    def set_ks_strategy_to_network_and_rf_according_to_cluster(self, keyspace, db_cluster=None, repair_after_alter=True):
         db_cluster = db_cluster or self.db_cluster
         node = random.choice([node for node in self.db_cluster.nodes if not node.running_nemesis])
         nodes_by_region = self.db_cluster.nodes_by_region()
@@ -988,10 +988,11 @@ class ClusterTester(db_stats.TestStatsMixin, unittest.TestCase):  # pylint: disa
         NetworkTopologyReplicationStrategy(**datacenters).apply(node, keyspace)
         res = node.run_cqlsh(f'DESC KEYSPACE {cql_quote_if_needed(keyspace)}', num_retry_on_failure=3)
         self.log.debug("%s description: %s", keyspace, res.stdout)
-        self.log.info('repair %s keyspace ...', keyspace)
-        for node in self.db_cluster.nodes:
-            node.run_nodetool(sub_cmd=f"repair -pr {keyspace}", timeout=MINUTE_IN_SEC * 20)
-        self.log.info('repair %s keyspace done', keyspace)
+        if repair_after_alter:
+            self.log.info('repair %s keyspace ...', keyspace)
+            for node in self.db_cluster.nodes:
+                node.run_nodetool(sub_cmd=f"repair -pr {keyspace}", timeout=MINUTE_IN_SEC * 20)
+            self.log.info('repair %s keyspace done', keyspace)
 
     @cache
     def pre_create_alternator_tables(self):
