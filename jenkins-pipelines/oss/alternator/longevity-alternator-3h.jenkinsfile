@@ -8,7 +8,7 @@ longevityPipeline(
     region: 'eu-west-1',
     availability_zone: 'c',
     test_name: 'longevity_test.LongevityTest.test_custom_time',
-    test_config: 'test-cases/longevity/longevity-alternator-3h.yaml',
+    test_config: '''["test-cases/longevity/longevity-alternator-3h.yaml", "configurations/tablets.yaml", "configurations/tablets_supported_nemeses.yaml"]''',
 
-    email_recipients: 'qa@scylladb.com'
+    email_recipients: 'balalis@scylladb.com'
 )
