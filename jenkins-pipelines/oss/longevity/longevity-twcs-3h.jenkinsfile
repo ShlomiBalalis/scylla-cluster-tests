@@ -7,6 +7,6 @@ longevityPipeline(
     backend: 'aws',
     region: 'eu-west-1',
     test_name: 'longevity_twcs_test.TWCSLongevityTest.test_twcs_longevity',
-    test_config: 'test-cases/longevity/longevity-twcs-3h.yaml'
+    test_config: '''["test-cases/longevity/longevity-twcs-3h.yaml", "configurations/tablets.yaml", "configurations/tablets_supported_nemeses.yaml"]'''
 
 )
