@@ -29,6 +29,7 @@ nemesis_during_prepare: true
 gce_n_local_ssd_disk_db: 1
 
 data_validation: |
+  validate_partitions: false
   table_name: "scylla_bench.test"
   primary_key_column: "pk"
   max_partitions_in_test_table: 10000
