@@ -71,6 +71,7 @@ class SstableUtils:
                 f"{self.db_node.add_install_prefix('/usr/bin/scylla')} sstable dump-scylla-metadata"
                 f" --scylla-yaml-file {self.db_node.add_install_prefix(SCYLLA_YAML_PATH)}"
                 "  --logger-log-level scylla-sstable=debug"
+                " --target-tablet-size-in-bytes 1073741824"
                 f" --keyspace {self.keyspace} --table {self.table} --sstables"
             )
         else:
