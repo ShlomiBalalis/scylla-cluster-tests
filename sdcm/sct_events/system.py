@@ -208,7 +208,7 @@ class CoreDumpEvent(InformationalEvent):
                  download_instructions: str,
                  source_timestamp: Optional[float] = None):
 
-        super().__init__(severity=Severity.ERROR)
+        super().__init__(severity=Severity.CRITICAL)
 
         self.node = str(node)
         self.corefile_url = corefile_url

@@ -109,7 +109,7 @@ AwsKmsEvent: ERROR
 ScyllaRepoEvent: WARNING
 InfoEvent: ERROR
 ThreadFailedEvent: ERROR
-CoreDumpEvent: ERROR
+CoreDumpEvent: CRITICAL
 TestResultEvent: ERROR
 DisruptionEvent: ERROR
 DbEventsFilter: NORMAL

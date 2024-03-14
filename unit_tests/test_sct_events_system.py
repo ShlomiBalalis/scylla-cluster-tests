@@ -93,7 +93,7 @@ class TestSystemEvents(unittest.TestCase):
         event.event_id = "aff29bce-d75c-4f86-9890-c6d9c1c25d3e"
         self.assertEqual(
             str(event),
-            "(CoreDumpEvent Severity.ERROR) period_type=one-time "
+            "(CoreDumpEvent Severity.CRITICAL) period_type=one-time "
             "event_id=aff29bce-d75c-4f86-9890-c6d9c1c25d3e node=node1\ncorefile_url=url1\nbacktrace=b1\n"
             "download_instructions=d1\n",
         )
