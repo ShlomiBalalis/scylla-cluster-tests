@@ -8,7 +8,7 @@ prepare_write_cmd:
 stress_cmd:
     - "cassandra-stress write cl=QUORUM duration=60m -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=40 -pop seq=1..5048570 -col 'n=FIXED(8) size=FIXED(128)' -log interval=5"
     - "cassandra-stress read  cl=QUORUM duration=60m -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' -mode cql3 native -rate threads=40 -pop seq=1..5048570 -col 'n=FIXED(8) size=FIXED(128)' -log interval=5"
-    - "scylla-bench -workload=sequential -mode=read -replication-factor=3 -partition-count=10000 -clustering-row-count=555 -clustering-row-size=uniform:128..2048 -concurrency=100 -connection-count=100 -consistency-level=quorum -rows-per-request=10 -timeout=30s -retry-number=30 -retry-interval=80ms,1s -iterations 0 -duration=60m -validate-data"
+    - "scylla-bench -workload=sequential -mode=read -replication-factor=3 -partition-count=9990 -clustering-row-count=555 -clustering-row-size=uniform:128..2048 -concurrency=100 -connection-count=100 -consistency-level=quorum -rows-per-request=10 -timeout=30s -retry-number=30 -retry-interval=80ms,1s -iterations 0 -duration=60m -validate-data"
 
 n_db_nodes: 4
 n_loaders: 1
@@ -33,6 +33,7 @@ data_validation: |
   table_name: "scylla_bench.test"
   primary_key_column: "pk"
   max_partitions_in_test_table: 10000
+  partition_range_with_data_validation: 0-9990
 
 server_encrypt: true
 client_encrypt: true
