@@ -189,7 +189,7 @@ class Nemesis:  # pylint: disable=too-many-instance-attributes,too-many-public-m
     has_steady_run: bool = False    # flag that signal that nemesis should be run with perf tests with steady run
     schema_changes: bool = False
     config_changes: bool = False
-    tablets_phase_1_supported = True  # flag that signal that the nemesis can run on a tablet-enabled cluster
+    tablets_phase_1_supported = False  # flag that signal that the nemesis can run on a tablet-enabled cluster
     free_tier_set: bool = False     # nemesis should be run in FreeTierNemesisSet
     manager_operation: bool = False  # flag that signals that the nemesis uses scylla manager
     delete_rows: bool = False  # A flag denotes a nemesis deletes partitions/rows, generating tombstones.
@@ -5384,6 +5384,7 @@ class DecommissionMonkey(Nemesis):
     disruptive = True
     limited = True
     topology_changes = True
+    tablets_phase_1_supported = True
 
     def disrupt(self):
         self.disrupt_nodetool_decommission()
@@ -5487,6 +5488,7 @@ class TruncateMonkey(Nemesis):
     kubernetes = True
     limited = True
     free_tier_set = True
+    tablets_phase_1_supported = True
 
     def disrupt(self):
         self.disrupt_truncate()
@@ -5496,6 +5498,7 @@ class TruncateLargeParititionMonkey(Nemesis):
     disruptive = False
     kubernetes = True
     free_tier_set = True
+    tablets_phase_1_supported = True
 
     def disrupt(self):
         self.disrupt_truncate_large_partition()
