@@ -4953,18 +4953,30 @@ class BaseScyllaCluster:  # pylint: disable=too-many-public-methods, too-many-in
     def decrease_rf_of_all_test_ks(self, region_to_decrease):
         execution_node = random.choice([node for node in self.nodes if not node.running_nemesis])
         test_keyspaces = self.get_test_keyspaces()
+        self.log.debug("test_keyspaces: %s", str(test_keyspaces))
         node_list_per_region = nodes_by_region(self.nodes)
+        self.log.debug("node_list_per_region: %s", str(node_list_per_region))
         dc_names_by_region = get_datacenter_name_per_region(self.nodes)
+        self.log.debug("dc_names_by_region: %s", str(dc_names_by_region))
         datacenters = {}
         for region in node_list_per_region:
             datacenters.update({dc_names_by_region[region]: len(node_list_per_region[region])})
         dc_to_decrease = dc_names_by_region[region_to_decrease]
-        self.log.debug("Number of nodes by datacenter %s", datacenters)
+        self.log.debug("dc_to_decrease: %s", str(dc_to_decrease))
+        self.log.debug("Pre-Decommission: Number of nodes by datacenter %s", datacenters)
         for keyspace in test_keyspaces:
             replication_strategy = ReplicationStrategy.get(execution_node, keyspace)
+            self.log.debug("replication of %s:   %s", keyspace, replication_strategy)
             if isinstance(replication_strategy, NetworkTopologyReplicationStrategy):
                 current_rf = replication_strategy.replication_factors
+                self.log.debug("current_rf: %s", str(current_rf))
+                self.log.debug("datacenters[dc_to_decrease]: %s   aaaaand current_rf[dc_to_decrease]: %s", str(
+                    datacenters[dc_to_decrease]), str(current_rf[dc_to_decrease]))
+                self.log.debug("TYPES: %s aaaand %s", str(type(datacenters[dc_to_decrease])),
+                               str(type(current_rf[dc_to_decrease])))
+                self.log.debug("condition: %s", str(datacenters[dc_to_decrease] == current_rf[dc_to_decrease]))
                 if datacenters[dc_to_decrease] == current_rf[dc_to_decrease]:
+                    self.log.debug("YES, NEED TO DECREASE")
                     current_rf[dc_to_decrease] -= 1
                     NetworkTopologyReplicationStrategy(**datacenters).apply(execution_node, keyspace)
 
