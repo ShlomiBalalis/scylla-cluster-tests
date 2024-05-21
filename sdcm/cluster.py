@@ -4974,8 +4974,9 @@ class BaseScyllaCluster:  # pylint: disable=too-many-public-methods, too-many-in
                     datacenters[dc_to_decrease]), str(current_rf[dc_to_decrease]))
                 self.log.debug("TYPES: %s aaaand %s", str(type(datacenters[dc_to_decrease])),
                                str(type(current_rf[dc_to_decrease])))
-                self.log.debug("condition: %s", str(datacenters[dc_to_decrease] == current_rf[dc_to_decrease]))
-                if datacenters[dc_to_decrease] == current_rf[dc_to_decrease]:
+                self.log.debug("condition: %s",
+                               str(datacenters[dc_to_decrease] == int(current_rf[dc_to_decrease])))
+                if datacenters[dc_to_decrease] == int(current_rf[dc_to_decrease]):
                     self.log.debug("YES, NEED TO DECREASE")
                     datacenters[dc_to_decrease] -= 1
                     NetworkTopologyReplicationStrategy(**datacenters).apply(execution_node, keyspace)
