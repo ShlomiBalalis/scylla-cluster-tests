@@ -4980,6 +4980,7 @@ class BaseScyllaCluster:  # pylint: disable=too-many-public-methods, too-many-in
                     self.log.debug("YES, NEED TO DECREASE")
                     datacenters[dc_to_decrease] -= 1
                     NetworkTopologyReplicationStrategy(**datacenters).apply(execution_node, keyspace)
+                    self.wait_for_schema_agreement()
 
     @property
     def scylla_manager_node(self) -> BaseNode:
